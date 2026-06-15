@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# Editor and environment files
+.idea/
+.vscode/
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+!client/.env.example
+!server/.env.example
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+.venv/
+venv/
+
+# Build outputs
+dist/
+build/
+out/
+client/dist/
+client/unpackage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local runtime data
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local environment
+client/.env.local
+server/.env
