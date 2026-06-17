@@ -212,7 +212,10 @@
             <view v-else class="sn-list">
               <view v-for="record in batch.garments" :key="record.sn" class="sn-row">
                 <view class="sn-main">
-                  <text class="sn-code">{{ record.sn }}</text>
+                  <view class="sn-code-group">
+                    <text class="sn-code">{{ record.sn }}</text>
+                    <button class="sn-copy-button" @click.stop="copySn(record.sn)">复制</button>
+                  </view>
                   <text :class="['status-pill', record.status === 'inactive' ? 'inactive' : '']">
                     {{ record.status === 'active' ? '有效' : '停用' }}
                   </text>
@@ -898,6 +901,72 @@ function openDetail(sn) {
   });
 }
 
+async function copySn(sn) {
+  const text = String(sn || '').trim();
+
+  if (!text) {
+    message.value = 'SN 为空，无法复制。';
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(text);
+    message.value = `已复制 SN：${text}`;
+    uni.showToast({
+      title: '已复制 SN',
+      icon: 'success'
+    });
+  } catch {
+    message.value = '复制失败，请手动复制 SN。';
+    uni.showToast({
+      title: '复制失败',
+      icon: 'none'
+    });
+  }
+}
+
+async function copyTextToClipboard(text) {
+  if (typeof uni !== 'undefined' && typeof uni.setClipboardData === 'function') {
+    try {
+      await new Promise((resolve, reject) => {
+        uni.setClipboardData({
+          data: text,
+          success: resolve,
+          fail: reject
+        });
+      });
+      return;
+    } catch {
+      // Continue to browser fallbacks below.
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const copied = document.execCommand('copy');
+    textarea.remove();
+
+    if (copied) {
+      return;
+    }
+  }
+
+  throw new Error('Clipboard API unavailable');
+}
+
 function bindingData(record) {
   return record?.binding || record?.owner || {};
 }
@@ -1207,10 +1276,37 @@ function logout() {
   border-top: 1px solid #e2dbd1;
 }
 
+.sn-code-group {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 10rpx;
+}
+
 .sn-code {
+  min-width: 0;
   color: #5f5a52;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 24rpx;
+  overflow-wrap: anywhere;
+}
+
+.sn-copy-button {
+  flex: 0 0 auto;
+  min-height: 52rpx;
+  margin: 0;
+  padding: 0 16rpx;
+  border: 1px solid #d7d1c8;
+  border-radius: 6rpx;
+  background: #fff;
+  color: #171717;
+  font-size: 22rpx;
+  line-height: 52rpx;
+}
+
+.sn-copy-button::after {
+  border: 0;
 }
 
 @media (min-width: 980px) {
@@ -1325,6 +1421,10 @@ function logout() {
     align-items: center;
   }
 
+  .sn-code-group {
+    gap: 8px;
+  }
+
   .sn-actions {
     grid-template-columns: repeat(2, auto);
     justify-content: end;
@@ -1333,6 +1433,13 @@ function logout() {
 
   .sn-code {
     font-size: 13px;
+  }
+
+  .sn-copy-button {
+    min-height: 28px;
+    padding: 0 9px;
+    font-size: 12px;
+    line-height: 28px;
   }
 }
 </style>
