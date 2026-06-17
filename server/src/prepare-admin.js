@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,6 @@ const serverDir = path.resolve(srcDir, '..');
 const adminDir = path.join(serverDir, 'admin');
 const adminDistDir = path.join(adminDir, 'dist');
 const adminIndexPath = path.join(adminDistDir, 'index.html');
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function latestMtimeMs(targetPath) {
   if (!existsSync(targetPath)) {
@@ -31,13 +30,13 @@ function latestMtimeMs(targetPath) {
 
 function runNpm(args, label) {
   console.log(`${label}...`);
-  const result = spawnSync(npmCommand, args, {
-    cwd: serverDir,
-    stdio: 'inherit'
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`${label} failed with exit code ${result.status ?? 'unknown'}`);
+  try {
+    execSync(`npm ${args.join(' ')}`, {
+      cwd: serverDir,
+      stdio: 'inherit'
+    });
+  } catch (error) {
+    throw new Error(`${label} failed`);
   }
 }
 
