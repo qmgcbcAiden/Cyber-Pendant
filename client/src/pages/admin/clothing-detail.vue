@@ -4,6 +4,7 @@
       <view>
         <text class="eyebrow">CLOTHING DETAIL</text>
         <text class="admin-title">{{ clothing?.productName || '衣服详情' }}</text>
+        <text class="admin-subtitle">维护主档信息，生成批次 SN，并处理绑定与二维码。</text>
       </view>
       <view class="topbar-actions">
         <button class="secondary-button" @click="goBack">返回主档</button>
@@ -12,32 +13,60 @@
     </view>
 
     <view v-if="loading" class="state-block">正在加载衣服详情...</view>
-    <view v-else-if="message && !clothing" class="state-block">{{ message }}</view>
+    <view v-else-if="pageMessage && !clothing" class="state-block">{{ pageMessage }}</view>
 
     <view v-else class="detail-layout">
       <view class="workspace-stack">
+        <view class="summary-card">
+          <view class="summary-head">
+            <view>
+              <text class="summary-kicker">当前主档</text>
+              <text class="summary-title">{{ clothing?.productName || '未命名衣服' }}</text>
+              <text class="summary-copy">{{ clothing?.manufacturer || '未录入厂家' }}</text>
+            </view>
+            <text :class="['status-pill', clothingForm.status === 'inactive' ? 'inactive' : '']">
+              {{ statusText(clothingForm.status) }}
+            </text>
+          </view>
+
+          <view class="summary-metrics">
+            <view class="metric-item">
+              <text class="metric-value">{{ batches.length }}</text>
+              <text class="metric-label">批次</text>
+            </view>
+            <view class="metric-item">
+              <text class="metric-value">{{ totalSnCount }}</text>
+              <text class="metric-label">SN</text>
+            </view>
+            <view class="metric-item wide-metric">
+              <text class="metric-value">{{ formatDateTime(clothing?.updatedAt) }}</text>
+              <text class="metric-label">最近更新</text>
+            </view>
+          </view>
+        </view>
+
         <view class="editor-panel">
           <view class="panel-heading">
             <view>
-              <text class="section-title">衣服信息</text>
-              <text :class="['status-pill inline-status', clothingForm.status === 'inactive' ? 'inactive' : '']">
-                {{ clothingForm.status === 'active' ? '有效' : '停用' }}
-              </text>
+              <text class="section-title">基本信息</text>
+              <text class="section-copy">主档信息会同步到该衣服下的公开吊牌页。</text>
             </view>
-            <view class="panel-actions">
-              <button
-                :class="clothingForm.status === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
-                @click="toggleClothingStatus"
-              >
-                {{ clothingForm.status === 'active' ? '停用衣服' : '启用衣服' }}
-              </button>
-              <button class="danger-button small-button" @click="hardDeleteClothing">
-                真删除
-              </button>
+            <button
+              :class="clothingEditorOpen ? 'ghost-button small-button' : 'secondary-button small-button'"
+              @click="toggleClothingEditor"
+            >
+              {{ clothingEditorOpen ? '取消编辑' : '编辑信息' }}
+            </button>
+          </view>
+
+          <view v-if="!clothingEditorOpen" class="info-grid">
+            <view v-for="item in clothingInfoRows" :key="item.label" class="info-item">
+              <text class="info-label">{{ item.label }}</text>
+              <text class="info-value">{{ item.value || '未录入' }}</text>
             </view>
           </view>
 
-          <view class="form-grid">
+          <view v-else class="form-grid">
             <view v-for="field in clothingTextFields" :key="field.key" class="form-field">
               <text class="field-label">{{ field.label }}</text>
               <input
@@ -61,19 +90,28 @@
               <text class="field-label">备注</text>
               <textarea v-model="clothingForm.remark" class="form-textarea" />
             </view>
+
+            <view class="editor-actions wide-field">
+              <button class="primary-button" :disabled="savingClothing" @click="saveClothing">
+                {{ savingClothing ? '保存中' : '保存衣服信息' }}
+              </button>
+            </view>
           </view>
 
-          <view class="editor-actions">
-            <button class="primary-button" :disabled="savingClothing" @click="saveClothing">
-              {{ savingClothing ? '保存中' : '保存衣服信息' }}
-            </button>
-          </view>
+          <text v-if="clothingMessage" class="message-text panel-message">{{ clothingMessage }}</text>
         </view>
 
         <view class="editor-panel">
           <view class="panel-heading">
-            <text class="section-title">生成新批次 SN</text>
+            <view>
+              <text class="section-title">生成批次 SN</text>
+              <text class="section-copy">录入款号、颜色、尺码和批次标签后批量生成二维码。</text>
+            </view>
             <button class="ghost-button small-button" @click="resetBatchForm">清空</button>
+          </view>
+
+          <view class="helper-strip">
+            至少填写款号、颜色、尺码或批次标签之一；单次最多生成 500 个 SN。
           </view>
 
           <view class="form-grid">
@@ -96,7 +134,7 @@
             </view>
 
             <view class="form-field">
-              <text class="field-label">数量</text>
+              <text class="field-label">生成数量</text>
               <input v-model="batchForm.count" class="form-input" type="number" />
             </view>
 
@@ -104,7 +142,7 @@
               <text class="field-label">批次备注</text>
               <textarea
                 v-model="batchForm.remark"
-                class="form-textarea"
+                class="form-textarea compact-textarea"
                 placeholder="本批次特殊说明"
               />
             </view>
@@ -112,7 +150,27 @@
 
           <view class="editor-actions">
             <button class="primary-button" :disabled="creatingBatch" @click="createBatch">
-              {{ creatingBatch ? '生成中' : '创建批次并生成 SN' }}
+              {{ creatingBatch ? '生成中' : '生成批次 SN' }}
+            </button>
+          </view>
+
+          <text v-if="batchMessage" class="message-text panel-message">{{ batchMessage }}</text>
+        </view>
+
+        <view class="danger-zone">
+          <view>
+            <text class="danger-title">主档危险操作</text>
+            <text class="danger-copy">停用会让该衣服下所有 SN 扫码返回停用；真删除会让已印刷二维码查不到。</text>
+          </view>
+          <view class="danger-actions">
+            <button
+              :class="clothingForm.status === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
+              @click="toggleClothingStatus"
+            >
+              {{ clothingForm.status === 'active' ? '停用衣服' : '启用衣服' }}
+            </button>
+            <button class="danger-button small-button" @click="hardDeleteClothing">
+              真删除衣服
             </button>
           </view>
         </view>
@@ -122,24 +180,26 @@
         <view class="records-toolbar">
           <view>
             <text class="section-title">批次与 SN</text>
-            <text class="toolbar-meta">{{ batches.length }} 个批次</text>
+            <text class="toolbar-meta">{{ batches.length }} 个批次，{{ totalSnCount }} 个 SN</text>
           </view>
           <button class="secondary-button" @click="loadAll">刷新</button>
         </view>
 
-        <text v-if="message" class="message-text panel-message">{{ message }}</text>
+        <text v-if="snMessage" class="message-text panel-message">{{ snMessage }}</text>
+        <text v-if="pageMessage && clothing" class="message-text panel-message">{{ pageMessage }}</text>
 
         <view v-if="batchesLoading" class="empty-state">正在加载批次...</view>
-        <view v-else-if="batches.length === 0" class="empty-state">暂无批次，先生成一批 SN。</view>
+        <view v-else-if="batches.length === 0" class="empty-state">
+          <text class="empty-title">暂无批次</text>
+          <text class="empty-copy">左侧生成一批 SN 后，这里会出现批次和二维码管理入口。</text>
+        </view>
 
         <view v-else class="batch-list">
           <view v-for="batch in batches" :key="batch.id" class="batch-card">
-            <view class="batch-head" @click="toggleBatchExpanded(batch.id)">
+            <view class="batch-head">
               <view>
-                <text class="batch-title">批次标签：{{ batchLabel(batch) }}</text>
-                <text class="batch-subtitle">
-                  {{ batchSummary(batch) }}
-                </text>
+                <text class="batch-title">批次：{{ batchLabel(batch) }}</text>
+                <text class="batch-subtitle">{{ batchSummary(batch) }}</text>
               </view>
               <text :class="['status-pill', batch.status === 'inactive' ? 'inactive' : '']">
                 {{ batch.status === 'active' ? '有效批次' : '停用批次' }}
@@ -147,9 +207,6 @@
             </view>
 
             <view class="batch-meta">
-              <text>颜色：{{ batch.color || '未录入' }}</text>
-              <text>尺码：{{ batch.size || '未录入' }}</text>
-              <text>批次标签：{{ batch.batchNo || '未录入' }}</text>
               <text>生产日期：{{ batch.productionDate || '未录入' }}</text>
               <text>SN 数量：{{ batchSnCount(batch) }}</text>
               <text>备注：{{ batch.remark || '未录入' }}</text>
@@ -159,109 +216,139 @@
               <button class="secondary-button small-button" @click="toggleBatchExpanded(batch.id)">
                 {{ isBatchExpanded(batch.id) ? '收起 SN' : `展开 SN (${batchSnCount(batch)})` }}
               </button>
-              <button class="secondary-button small-button" @click="startEditBatch(batch)">
-                编辑批次
-              </button>
               <button class="ghost-button small-button" @click="chooseExportFormat(batch)">
                 导出本批
               </button>
-              <button
-                :class="batch.status === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
-                @click="toggleBatchStatus(batch)"
-              >
-                {{ batch.status === 'active' ? '停用批次' : '启用批次' }}
-              </button>
-              <button class="danger-button small-button" @click="hardDeleteBatch(batch)">
-                真删除批次
+              <button class="ghost-button small-button" @click="toggleBatchTools(batch.id)">
+                {{ isBatchToolsOpen(batch.id) ? '收起管理' : '批次管理' }}
               </button>
             </view>
 
-            <view v-if="editingBatchId === batch.id" class="batch-editor">
-              <view class="form-grid">
-                <view v-for="field in batchTextFields" :key="field.key" class="form-field">
-                  <text class="field-label">{{ field.label }}</text>
-                  <view v-if="field.key === 'productionDate'" class="date-picker-row">
-                    <view class="form-picker date-picker-value">
-                      {{ batchEditForm.productionDate || todayDateString() }}
+            <view v-if="isBatchToolsOpen(batch.id)" class="batch-tools">
+              <view class="tool-head">
+                <text class="tool-title">批次管理</text>
+                <button class="secondary-button small-button" @click="startEditBatch(batch)">
+                  编辑批次
+                </button>
+              </view>
+
+              <view v-if="editingBatchId === batch.id" class="batch-editor">
+                <view class="form-grid">
+                  <view v-for="field in batchTextFields" :key="field.key" class="form-field">
+                    <text class="field-label">{{ field.label }}</text>
+                    <view v-if="field.key === 'productionDate'" class="date-picker-row">
+                      <view class="form-picker date-picker-value">
+                        {{ batchEditForm.productionDate || todayDateString() }}
+                      </view>
+                      <button class="secondary-button date-picker-button" @click="openDatePicker('edit')">
+                        选择日期
+                      </button>
                     </view>
-                    <button class="secondary-button date-picker-button" @click="openDatePicker('edit')">
-                      选择日期
+                    <input v-else v-model="batchEditForm[field.key]" class="form-input" />
+                  </view>
+
+                  <view class="form-field wide-field">
+                    <text class="field-label">批次备注</text>
+                    <textarea v-model="batchEditForm.remark" class="form-textarea compact-textarea" />
+                  </view>
+                </view>
+
+                <view class="batch-edit-actions">
+                  <button class="primary-button small-button" :disabled="savingBatch" @click="saveBatch">
+                    {{ savingBatch ? '保存中' : '保存批次' }}
+                  </button>
+                  <button class="ghost-button small-button" @click="cancelEditBatch">取消</button>
+                </view>
+              </view>
+
+              <view class="tool-danger">
+                <text class="danger-copy">停用批次会让本批 SN 扫码返回停用；真删除会移除本批所有 SN。</text>
+                <view class="danger-actions">
+                  <button
+                    :class="batch.status === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
+                    @click="toggleBatchStatus(batch)"
+                  >
+                    {{ batch.status === 'active' ? '停用批次' : '启用批次' }}
+                  </button>
+                  <button class="danger-button small-button" @click="hardDeleteBatch(batch)">
+                    真删除批次
+                  </button>
+                </view>
+              </view>
+            </view>
+
+            <view v-if="isBatchExpanded(batch.id)" class="sn-section">
+              <view class="sn-toolbar">
+                <text class="sn-toolbar-title">SN 明细</text>
+                <text class="sn-toolbar-meta">{{ batchSnCount(batch) }} 个</text>
+              </view>
+
+              <view v-if="!batch.garments?.length" class="empty-state compact-empty">该批次暂无 SN。</view>
+
+              <view v-else class="sn-list">
+                <view v-for="record in batch.garments" :key="record.sn" class="sn-row">
+                  <view class="sn-main">
+                    <view class="sn-code-group">
+                      <text class="sn-code">{{ record.sn }}</text>
+                      <button class="sn-copy-button" @click.stop="copySn(record.sn)">复制</button>
+                    </view>
+                    <text :class="['status-pill', record.snStatus === 'inactive' ? 'inactive' : '']">
+                      {{ record.snStatus === 'active' ? '有效' : '停用' }}
+                    </text>
+                  </view>
+
+                  <view class="sn-meta">
+                    <text :class="['binding-status-text', record.isBound ? 'bound' : '']">
+                      绑定：{{ record.isBound ? '已绑定' : '未绑定' }}
+                    </text>
+                    <text>二维码：链接码</text>
+                    <template v-if="record.isBound && isBindingExpanded(record.sn)">
+                      <text>学生：{{ bindingField(record, 'studentName') }}</text>
+                      <text>学校：{{ bindingField(record, 'school') }}</text>
+                      <text>班级：{{ bindingField(record, 'className') }}</text>
+                      <text>联系人：{{ bindingField(record, 'contactName') }}</text>
+                      <text>联系电话：{{ bindingPhone(record) }}</text>
+                      <text>绑定时间：{{ bindingTime(record) }}</text>
+                    </template>
+                  </view>
+
+                  <view class="sn-actions">
+                    <button class="secondary-button small-button" @click="openDetail(record.sn)">
+                      查看
+                    </button>
+                    <button class="ghost-button small-button" @click="downloadQr(record.sn, 'url')">
+                      二维码
+                    </button>
+                    <button
+                      v-if="record.isBound"
+                      class="ghost-button small-button"
+                      @click="toggleBindingExpanded(record.sn)"
+                    >
+                      {{ isBindingExpanded(record.sn) ? '收起绑定' : '绑定详情' }}
+                    </button>
+                    <button
+                      :class="record.snStatus === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
+                      @click="toggleGarmentStatus(record)"
+                    >
+                      {{ record.snStatus === 'active' ? '停用 SN' : '启用 SN' }}
+                    </button>
+                    <button
+                      v-if="record.isBound"
+                      class="danger-button small-button"
+                      @click="unbindBinding(record)"
+                    >
+                      解绑
+                    </button>
+                    <button class="danger-button small-button" @click="hardDeleteGarment(record)">
+                      真删除
                     </button>
                   </view>
-                  <input v-else v-model="batchEditForm[field.key]" class="form-input" />
                 </view>
-
-                <view class="form-field wide-field">
-                  <text class="field-label">批次备注</text>
-                  <textarea v-model="batchEditForm.remark" class="form-textarea" />
-                </view>
-              </view>
-
-              <view class="batch-edit-actions">
-                <button class="primary-button small-button" :disabled="savingBatch" @click="saveBatch">
-                  {{ savingBatch ? '保存中' : '保存批次' }}
-                </button>
-                <button class="ghost-button small-button" @click="cancelEditBatch">取消</button>
               </view>
             </view>
 
-            <view v-if="!isBatchExpanded(batch.id)" class="collapsed-summary">
-              SN 明细已折叠，共 {{ batchSnCount(batch) }} 个。
-            </view>
-
-            <view v-else class="sn-list">
-              <view v-for="record in batch.garments" :key="record.sn" class="sn-row">
-                <view class="sn-main">
-                  <view class="sn-code-group">
-                    <text class="sn-code">{{ record.sn }}</text>
-                    <button class="sn-copy-button" @click.stop="copySn(record.sn)">复制</button>
-                  </view>
-                  <text :class="['status-pill', record.status === 'inactive' ? 'inactive' : '']">
-                    {{ record.status === 'active' ? '有效' : '停用' }}
-                  </text>
-                </view>
-
-                <view class="sn-meta">
-                  <text>SN 状态：{{ record.snStatus === 'active' ? '有效' : '停用' }}</text>
-                  <text>二维码：链接码</text>
-                  <text :class="['binding-status-text', record.isBound ? 'bound' : '']">
-                    绑定状态：{{ record.isBound ? '已绑定' : '未绑定' }}
-                  </text>
-                  <template v-if="record.isBound">
-                    <text>学生：{{ bindingField(record, 'studentName') }}</text>
-                    <text>学校：{{ bindingField(record, 'school') }}</text>
-                    <text>班级：{{ bindingField(record, 'className') }}</text>
-                    <text>联系人：{{ bindingField(record, 'contactName') }}</text>
-                    <text>联系电话：{{ bindingPhone(record) }}</text>
-                    <text>绑定时间：{{ bindingTime(record) }}</text>
-                  </template>
-                </view>
-
-                <view class="sn-actions">
-                  <button class="secondary-button small-button" @click="openDetail(record.sn)">
-                    查看
-                  </button>
-                  <button class="ghost-button small-button" @click="downloadQr(record.sn, 'url')">
-                    下载二维码
-                  </button>
-                  <button
-                    :class="record.snStatus === 'active' ? 'danger-button small-button' : 'secondary-button small-button'"
-                    @click="toggleGarmentStatus(record)"
-                  >
-                    {{ record.snStatus === 'active' ? '停用 SN' : '启用 SN' }}
-                  </button>
-                  <button
-                    v-if="record.isBound"
-                    class="danger-button small-button"
-                    @click="unbindBinding(record)"
-                  >
-                    解绑
-                  </button>
-                  <button class="danger-button small-button" @click="hardDeleteGarment(record)">
-                    真删除
-                  </button>
-                </view>
-              </view>
+            <view v-else class="collapsed-summary">
+              SN 明细已收起，共 {{ batchSnCount(batch) }} 个。展开后可查看、复制、导出和停用。
             </view>
           </view>
         </view>
@@ -271,7 +358,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import * as XLSX from 'xlsx';
 import {
@@ -353,12 +440,34 @@ const batchesLoading = ref(false);
 const savingClothing = ref(false);
 const creatingBatch = ref(false);
 const savingBatch = ref(false);
+const clothingEditorOpen = ref(false);
 const editingBatchId = ref('');
 const expandedBatchIds = ref([]);
-const message = ref('');
+const openBatchToolsId = ref('');
+const expandedBindingSns = ref([]);
+const pageMessage = ref('');
+const clothingMessage = ref('');
+const batchMessage = ref('');
+const snMessage = ref('');
 const clothingForm = reactive({ ...emptyClothingForm });
 const batchForm = reactive(createEmptyBatchForm());
 const batchEditForm = reactive(createEmptyBatchForm());
+
+const totalSnCount = computed(() =>
+  batches.value.reduce((total, batch) => total + batchSnCount(batch), 0)
+);
+
+const clothingInfoRows = computed(() => [
+  { label: '衣服名称', value: clothingForm.productName },
+  { label: '厂家', value: clothingForm.manufacturer },
+  { label: '厂家地址', value: clothingForm.manufacturerAddress },
+  { label: '执行标准', value: clothingForm.standard },
+  { label: '安全类别', value: clothingForm.safetyCategory },
+  { label: '质量等级', value: clothingForm.grade },
+  { label: '面料', value: clothingForm.fabric },
+  { label: '洗护说明', value: clothingForm.careInstructions },
+  { label: '备注', value: clothingForm.remark }
+]);
 
 onLoad((query) => {
   if (!getToken()) {
@@ -371,7 +480,7 @@ onLoad((query) => {
   clothingId.value = String(query?.id || '').trim();
   if (!clothingId.value) {
     loading.value = false;
-    message.value = '缺少衣服 ID。';
+    pageMessage.value = '缺少衣服 ID。';
     return;
   }
 
@@ -391,7 +500,7 @@ async function loadClothing() {
     Object.assign(clothingForm, emptyClothingForm, response.clothing || {});
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '加载衣服失败。';
+    pageMessage.value = error.message || '加载衣服失败。';
   } finally {
     loading.value = false;
   }
@@ -407,10 +516,26 @@ async function loadBatches() {
     expandedBatchIds.value = expandedBatchIds.value.filter((id) => existingIds.has(id));
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '加载批次失败。';
+    pageMessage.value = error.message || '加载批次失败。';
   } finally {
     batchesLoading.value = false;
   }
+}
+
+function toggleClothingEditor() {
+  clothingEditorOpen.value = !clothingEditorOpen.value;
+  clothingMessage.value = '';
+  if (!clothingEditorOpen.value) {
+    Object.assign(clothingForm, emptyClothingForm, clothing.value || {});
+  }
+}
+
+function statusText(status) {
+  return status === 'inactive' ? '停用' : '有效';
+}
+
+function formatDateTime(value) {
+  return value ? value.replace('T', ' ').slice(0, 16) : '未记录';
 }
 
 function batchLabel(batch) {
@@ -445,6 +570,30 @@ function toggleBatchExpanded(batchId) {
   }
 
   expandedBatchIds.value = [...expandedBatchIds.value, id];
+}
+
+function isBatchToolsOpen(batchId) {
+  return openBatchToolsId.value === String(batchId);
+}
+
+function toggleBatchTools(batchId) {
+  const id = String(batchId);
+  openBatchToolsId.value = openBatchToolsId.value === id ? '' : id;
+}
+
+function isBindingExpanded(sn) {
+  return expandedBindingSns.value.includes(String(sn));
+}
+
+function toggleBindingExpanded(sn) {
+  const id = String(sn);
+
+  if (expandedBindingSns.value.includes(id)) {
+    expandedBindingSns.value = expandedBindingSns.value.filter((item) => item !== id);
+    return;
+  }
+
+  expandedBindingSns.value = [...expandedBindingSns.value, id];
 }
 
 function todayDateString(date = new Date()) {
@@ -482,7 +631,7 @@ function openDatePicker(target) {
 
   if (typeof document === 'undefined') {
     form.productionDate = fallbackDate;
-    message.value = '当前平台暂不支持原生日期选择。';
+    batchMessage.value = '当前平台暂不支持原生日期选择。';
     return;
   }
 
@@ -528,17 +677,18 @@ function openDatePicker(target) {
 
 async function saveClothing() {
   savingClothing.value = true;
-  message.value = '';
+  clothingMessage.value = '';
 
   try {
     const response = await updateClothing(clothingId.value, { ...clothingForm });
     clothing.value = response.clothing;
     Object.assign(clothingForm, emptyClothingForm, response.clothing || {});
-    message.value = '已保存衣服信息。';
+    clothingEditorOpen.value = false;
+    clothingMessage.value = '已保存衣服信息。';
     await loadBatches();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '保存衣服失败。';
+    clothingMessage.value = error.message || '保存衣服失败。';
   } finally {
     savingClothing.value = false;
   }
@@ -562,11 +712,11 @@ async function toggleClothingStatus() {
     } else {
       await updateClothing(clothingId.value, { status: 'active' });
     }
-    message.value = nextStatus === 'active' ? '衣服已启用。' : '衣服已停用。';
+    clothingMessage.value = nextStatus === 'active' ? '衣服已启用。' : '衣服已停用。';
     await loadAll();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '状态更新失败。';
+    clothingMessage.value = error.message || '状态更新失败。';
   }
 }
 
@@ -587,20 +737,21 @@ async function hardDeleteClothing() {
     });
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '真删除衣服失败。';
+    clothingMessage.value = error.message || '真删除衣服失败。';
   }
 }
 
 function resetBatchForm() {
   Object.assign(batchForm, createEmptyBatchForm());
+  batchMessage.value = '';
 }
 
 async function createBatch() {
   const count = Number(batchForm.count);
-  message.value = '';
+  batchMessage.value = '';
 
   if (!Number.isInteger(count) || count <= 0) {
-    message.value = '生成数量必须大于 0。';
+    batchMessage.value = '生成数量必须大于 0。';
     return;
   }
 
@@ -612,19 +763,26 @@ async function createBatch() {
       productionDate: normalizeDateValue(batchForm.productionDate) || todayDateString(),
       count
     });
-    message.value = `已创建批次并生成 ${response.batch?.garments?.length || 0} 个 SN。`;
+    const createdCount = response.batch?.garments?.length || 0;
+    const createdBatchId = response.batch?.id ? String(response.batch.id) : '';
+    batchMessage.value = `已创建批次并生成 ${createdCount} 个 SN。`;
     resetBatchForm();
     await loadAll();
+    if (createdBatchId && !expandedBatchIds.value.includes(createdBatchId)) {
+      expandedBatchIds.value = [createdBatchId, ...expandedBatchIds.value];
+    }
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '生成批次失败。';
+    batchMessage.value = error.message || '生成批次失败。';
   } finally {
     creatingBatch.value = false;
   }
 }
 
 function startEditBatch(batch) {
+  openBatchToolsId.value = String(batch.id);
   editingBatchId.value = batch.id;
+  batchMessage.value = '';
   Object.assign(batchEditForm, createEmptyBatchForm(), {
     styleNo: batch.styleNo || '',
     color: batch.color || '',
@@ -647,7 +805,7 @@ async function saveBatch() {
   }
 
   savingBatch.value = true;
-  message.value = '';
+  batchMessage.value = '';
 
   try {
     await updateBatch(editingBatchId.value, {
@@ -658,12 +816,12 @@ async function saveBatch() {
       productionDate: normalizeDateValue(batchEditForm.productionDate) || todayDateString(),
       remark: batchEditForm.remark
     });
-    message.value = '已保存批次。';
+    batchMessage.value = '已保存批次。';
     cancelEditBatch();
     await loadBatches();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '保存批次失败。';
+    batchMessage.value = error.message || '保存批次失败。';
   } finally {
     savingBatch.value = false;
   }
@@ -687,11 +845,11 @@ async function toggleBatchStatus(batch) {
     } else {
       await updateBatch(batch.id, { status: 'active' });
     }
-    message.value = nextStatus === 'active' ? '批次已启用。' : '批次已停用。';
+    batchMessage.value = nextStatus === 'active' ? '批次已启用。' : '批次已停用。';
     await loadBatches();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '批次状态更新失败。';
+    batchMessage.value = error.message || '批次状态更新失败。';
   }
 }
 
@@ -707,11 +865,12 @@ async function hardDeleteBatch(batch) {
 
   try {
     await deleteBatch(batch.id, true);
-    message.value = '批次已真删除。';
+    batchMessage.value = '批次已真删除。';
+    openBatchToolsId.value = '';
     await loadAll();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '真删除批次失败。';
+    batchMessage.value = error.message || '真删除批次失败。';
   }
 }
 
@@ -731,11 +890,11 @@ async function toggleGarmentStatus(record) {
     } else {
       await updateGarment(record.sn, { status: 'active' });
     }
-    message.value = nextStatus === 'active' ? 'SN 已启用。' : 'SN 已停用。';
+    snMessage.value = nextStatus === 'active' ? 'SN 已启用。' : 'SN 已停用。';
     await loadBatches();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || 'SN 状态更新失败。';
+    snMessage.value = error.message || 'SN 状态更新失败。';
   }
 }
 
@@ -751,11 +910,11 @@ async function unbindBinding(record) {
 
   try {
     await unbindGarmentBindingApi(record.sn);
-    message.value = `${record.sn} 已解绑学生信息。`;
+    snMessage.value = `${record.sn} 已解绑学生信息。`;
     await loadBatches();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '解绑失败。';
+    snMessage.value = error.message || '解绑失败。';
   }
 }
 
@@ -771,17 +930,17 @@ async function hardDeleteGarment(record) {
 
   try {
     await deleteGarment(record.sn, true);
-    message.value = 'SN 已真删除。';
+    snMessage.value = 'SN 已真删除。';
     await loadAll();
   } catch (error) {
     handleAuthError(error);
-    message.value = error.message || '真删除 SN 失败。';
+    snMessage.value = error.message || '真删除 SN 失败。';
   }
 }
 
 function chooseExportFormat(batch) {
   if (!batch.garments?.length) {
-    message.value = '该批次暂无 SN 可导出。';
+    batchMessage.value = '该批次暂无 SN 可导出。';
     return;
   }
 
@@ -882,7 +1041,7 @@ function formatTimestamp(date) {
 
 function downloadBlob(blob, filename) {
   if (typeof document === 'undefined') {
-    message.value = '当前平台暂不支持文件下载。';
+    batchMessage.value = '当前平台暂不支持文件下载。';
     return;
   }
 
@@ -905,19 +1064,19 @@ async function copySn(sn) {
   const text = String(sn || '').trim();
 
   if (!text) {
-    message.value = 'SN 为空，无法复制。';
+    snMessage.value = 'SN 为空，无法复制。';
     return;
   }
 
   try {
     await copyTextToClipboard(text);
-    message.value = `已复制 SN：${text}`;
+    snMessage.value = `已复制 SN：${text}`;
     uni.showToast({
       title: '已复制 SN',
       icon: 'success'
     });
   } catch {
-    message.value = '复制失败，请手动复制 SN。';
+    snMessage.value = '复制失败，请手动复制 SN。';
     uni.showToast({
       title: '复制失败',
       icon: 'none'
@@ -926,6 +1085,34 @@ async function copySn(sn) {
 }
 
 async function copyTextToClipboard(text) {
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const copied = document.execCommand('copy');
+    textarea.remove();
+
+    if (copied) {
+      return;
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Continue to platform fallback below.
+    }
+  }
+
   if (typeof uni !== 'undefined' && typeof uni.setClipboardData === 'function') {
     try {
       await new Promise((resolve, reject) => {
@@ -937,30 +1124,7 @@ async function copyTextToClipboard(text) {
       });
       return;
     } catch {
-      // Continue to browser fallbacks below.
-    }
-  }
-
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  if (typeof document !== 'undefined') {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    textarea.setSelectionRange(0, text.length);
-    const copied = document.execCommand('copy');
-    textarea.remove();
-
-    if (copied) {
-      return;
+      // Fall through to the final error.
     }
   }
 
@@ -1076,10 +1240,23 @@ function logout() {
   font-weight: 680;
 }
 
-.topbar-actions {
+.admin-subtitle {
+  display: block;
+  margin-top: 10rpx;
+  color: #6b665f;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.topbar-actions,
+.danger-actions,
+.editor-actions,
+.batch-actions,
+.batch-edit-actions,
+.sn-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16rpx;
+  gap: 12rpx;
 }
 
 .state-block,
@@ -1101,37 +1278,138 @@ function logout() {
   gap: 24rpx;
 }
 
+.summary-card,
 .editor-panel,
-.batches-panel {
+.batches-panel,
+.danger-zone {
   border: 1px solid #ddd6cc;
   border-radius: 8rpx;
   background: #fffdf9;
 }
 
+.summary-card,
 .editor-panel,
-.batches-panel {
+.batches-panel,
+.danger-zone {
   padding: 24rpx;
 }
 
+.summary-head,
 .panel-heading,
-.records-toolbar {
+.records-toolbar,
+.batch-head,
+.tool-head,
+.sn-main,
+.sn-toolbar {
   display: flex;
   flex-direction: column;
   gap: 18rpx;
-  margin-bottom: 22rpx;
 }
 
-.panel-actions,
-.batch-actions,
-.sn-actions,
-.batch-edit-actions {
+.summary-kicker,
+.summary-title,
+.summary-copy,
+.section-copy,
+.metric-value,
+.metric-label,
+.info-label,
+.info-value,
+.danger-title,
+.danger-copy,
+.toolbar-meta,
+.empty-title,
+.empty-copy,
+.batch-title,
+.batch-subtitle,
+.tool-title,
+.sn-toolbar-title,
+.sn-toolbar-meta {
+  display: block;
+}
+
+.summary-kicker {
+  color: #746e65;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.summary-title {
+  margin-top: 8rpx;
+  color: #121212;
+  font-size: 38rpx;
+  font-weight: 740;
+  line-height: 1.25;
+}
+
+.summary-copy,
+.section-copy,
+.danger-copy,
+.toolbar-meta,
+.batch-subtitle,
+.sn-toolbar-meta {
+  margin-top: 8rpx;
+  color: #6b665f;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.summary-metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12rpx;
+  margin-top: 22rpx;
 }
 
-.inline-status {
-  margin-top: 12rpx;
+.metric-item {
+  padding: 16rpx;
+  border: 1px solid #e5ded4;
+  border-radius: 8rpx;
+  background: #fbf8f2;
+}
+
+.wide-metric {
+  grid-column: 1 / -1;
+}
+
+.metric-value {
+  color: #171717;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.metric-label {
+  margin-top: 6rpx;
+  color: #746e65;
+  font-size: 22rpx;
+}
+
+.info-grid {
+  display: grid;
+  gap: 14rpx;
+}
+
+.info-item {
+  display: grid;
+  gap: 8rpx;
+  padding-bottom: 14rpx;
+  border-bottom: 1px solid #ebe4da;
+}
+
+.info-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.info-label {
+  color: #746e65;
+  font-size: 22rpx;
+}
+
+.info-value {
+  color: #151515;
+  font-size: 26rpx;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
 .form-grid {
@@ -1164,9 +1442,22 @@ function logout() {
   white-space: nowrap;
 }
 
+.compact-textarea {
+  min-height: 120rpx;
+}
+
+.helper-strip,
+.collapsed-summary {
+  padding: 16rpx 18rpx;
+  border: 1px dashed #d8d1c7;
+  border-radius: 8rpx;
+  background: #fffdf9;
+  color: #6b665f;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
 .editor-actions {
-  display: grid;
-  gap: 16rpx;
   margin-top: 24rpx;
 }
 
@@ -1175,29 +1466,62 @@ function logout() {
   padding: 0 20rpx;
   font-size: 24rpx;
   line-height: 74rpx;
+  white-space: nowrap;
 }
 
 .message-text {
   color: #8d3c22;
   font-size: 24rpx;
+  line-height: 1.5;
 }
 
 .panel-message {
   display: block;
-  margin-bottom: 18rpx;
+  margin-top: 18rpx;
 }
 
-.toolbar-meta {
-  display: block;
-  margin-top: 8rpx;
-  color: #6b665f;
-  font-size: 24rpx;
+.danger-zone,
+.tool-danger {
+  display: grid;
+  gap: 18rpx;
+  border-color: #e4c8be;
+  background: #fff9f6;
+}
+
+.danger-title {
+  color: #8d2e22;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.batches-panel {
+  align-self: start;
 }
 
 .empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 12rpx;
   padding: 42rpx 0;
   color: #746e65;
   text-align: center;
+}
+
+.empty-title {
+  color: #151515;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.empty-copy {
+  max-width: 520rpx;
+  color: #746e65;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.compact-empty {
+  padding: 20rpx 0;
 }
 
 .batch-card {
@@ -1209,30 +1533,10 @@ function logout() {
   background: #fbf8f2;
 }
 
-.batch-head,
-.sn-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-
-.batch-head {
-  cursor: pointer;
-}
-
 .batch-title {
-  display: block;
   color: #141414;
   font-size: 32rpx;
   font-weight: 650;
-}
-
-.batch-subtitle {
-  display: block;
-  margin-top: 8rpx;
-  color: #6b665f;
-  font-size: 24rpx;
 }
 
 .batch-meta,
@@ -1243,25 +1547,28 @@ function logout() {
   font-size: 24rpx;
 }
 
-.binding-status-text.bound {
-  color: #4f874d;
-  font-weight: 650;
-}
-
-.batch-editor {
+.batch-tools,
+.sn-section {
   display: grid;
   gap: 18rpx;
   padding-top: 18rpx;
   border-top: 1px solid #e2dbd1;
 }
 
-.collapsed-summary {
-  padding: 16rpx 18rpx;
-  border: 1px dashed #d8d1c7;
-  border-radius: 8rpx;
-  background: #fffdf9;
-  color: #6b665f;
-  font-size: 24rpx;
+.tool-head {
+  align-items: start;
+}
+
+.tool-title,
+.sn-toolbar-title {
+  color: #151515;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.batch-editor {
+  display: grid;
+  gap: 18rpx;
 }
 
 .sn-list {
@@ -1272,8 +1579,10 @@ function logout() {
 .sn-row {
   display: grid;
   gap: 14rpx;
-  padding-top: 16rpx;
-  border-top: 1px solid #e2dbd1;
+  padding: 16rpx;
+  border: 1px solid #e5ded4;
+  border-radius: 8rpx;
+  background: #fffdf9;
 }
 
 .sn-code-group {
@@ -1309,6 +1618,11 @@ function logout() {
   border: 0;
 }
 
+.binding-status-text.bound {
+  color: #4f874d;
+  font-weight: 650;
+}
+
 @media (min-width: 980px) {
   .detail-admin-page {
     padding: 32px;
@@ -1325,13 +1639,32 @@ function logout() {
     font-size: 32px;
   }
 
-  .topbar-actions {
-    grid-template-columns: auto auto;
+  .admin-subtitle,
+  .summary-copy,
+  .section-copy,
+  .danger-copy,
+  .toolbar-meta,
+  .batch-subtitle,
+  .batch-meta,
+  .sn-meta,
+  .message-text,
+  .helper-strip,
+  .collapsed-summary,
+  .empty-copy {
+    font-size: 13px;
+  }
+
+  .topbar-actions,
+  .danger-actions,
+  .editor-actions,
+  .batch-edit-actions {
+    grid-template-columns: repeat(2, auto);
+    justify-content: end;
     gap: 10px;
   }
 
   .detail-layout {
-    grid-template-columns: minmax(400px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(390px, 0.7fr) minmax(0, 1.3fr);
     align-items: start;
     gap: 24px;
   }
@@ -1342,29 +1675,69 @@ function logout() {
     gap: 18px;
   }
 
+  .summary-card,
   .editor-panel,
-  .batches-panel {
+  .batches-panel,
+  .danger-zone,
+  .batch-card,
+  .sn-row {
     border-radius: 8px;
+  }
+
+  .summary-card,
+  .editor-panel,
+  .batches-panel,
+  .danger-zone {
     padding: 22px;
   }
 
+  .summary-head,
   .panel-heading,
-  .records-toolbar {
+  .records-toolbar,
+  .batch-head,
+  .tool-head,
+  .sn-main,
+  .sn-toolbar {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
   }
 
-  .panel-actions,
-  .batch-edit-actions {
-    grid-template-columns: repeat(2, auto);
-    justify-content: end;
+  .summary-title {
+    font-size: 24px;
   }
 
-  .batch-actions {
-    grid-template-columns: repeat(5, auto);
-    justify-content: end;
+  .summary-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .metric-item {
+    padding: 12px;
+  }
+
+  .metric-value {
+    font-size: 18px;
+  }
+
+  .metric-label,
+  .info-label {
+    font-size: 12px;
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .info-item {
+    padding-bottom: 12px;
+  }
+
+  .info-value {
+    font-size: 14px;
   }
 
   .form-grid {
@@ -1380,7 +1753,8 @@ function logout() {
   }
 
   .date-picker-row {
-    gap: 10px;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .date-picker-button {
@@ -1390,13 +1764,15 @@ function logout() {
     line-height: 44px;
   }
 
-  .toolbar-meta,
-  .batch-subtitle,
-  .batch-meta,
-  .sn-meta,
-  .message-text,
-  .collapsed-summary {
-    font-size: 13px;
+  .danger-zone {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .danger-title,
+  .tool-title,
+  .sn-toolbar-title {
+    font-size: 16px;
   }
 
   .batch-card {
@@ -1411,24 +1787,32 @@ function logout() {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .sn-row {
-    grid-template-columns: minmax(170px, 0.7fr) minmax(250px, 1fr) minmax(250px, auto);
-    align-items: start;
-  }
-
-  .sn-main {
+  .batch-actions {
+    grid-template-columns: repeat(3, auto);
     justify-content: start;
-    align-items: center;
   }
 
-  .sn-code-group {
-    gap: 8px;
+  .tool-danger {
+    padding: 14px;
+    border: 1px solid #e4c8be;
+    border-radius: 8px;
+  }
+
+  .sn-row {
+    grid-template-columns: minmax(190px, 0.72fr) minmax(210px, 1fr) minmax(260px, auto);
+    align-items: start;
+    padding: 14px;
   }
 
   .sn-actions {
     grid-template-columns: repeat(2, auto);
     justify-content: end;
     align-content: start;
+    gap: 8px;
+  }
+
+  .sn-code-group {
+    gap: 8px;
   }
 
   .sn-code {
