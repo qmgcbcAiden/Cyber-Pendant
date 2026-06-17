@@ -1,34 +1,68 @@
 <template>
   <view class="page-shell home-page">
-    <view class="topbar">
-      <text class="brand-mark">Cyber Pendant</text>
-    </view>
+    <view class="phone-shell">
+      <view class="home-topbar">
+        <view class="brand-block">
+          <text class="brand-mark">Cyber Pendant</text>
+          <text class="brand-subtitle">校服安全防伪码</text>
+        </view>
+        <text class="status-chip">官方溯源</text>
+      </view>
 
-    <view class="hero-layout">
-      <view class="hero-copy">
-        <text class="eyebrow">DIGITAL GARMENT ID</text>
-        <text class="hero-title">每一件衣服，都有自己的数字吊牌。</text>
-        <text class="hero-text">
-          输入 SN 码或扫描吊牌二维码，查看面料、执行标准、厂家、洗护说明与生产批次。
-        </text>
+      <view class="home-content">
+        <view class="verification-intro">
+          <view class="intro-copy">
+            <text class="eyebrow">GARMENT TRACE</text>
+            <text class="hero-title">核验校服吊牌真伪</text>
+            <text class="hero-text">
+              输入 SN 码或扫描二维码，查看面料、执行标准、生产批次与企业信息。
+            </text>
+          </view>
+
+          <view class="hero-media">
+            <image class="hero-image" src="/static/tag-hero.png" mode="aspectFill" />
+            <view class="hero-caption">
+              <text class="caption-label">VERIFY</text>
+              <text class="caption-value">扫码复验</text>
+            </view>
+          </view>
+        </view>
 
         <view class="query-panel">
-          <text class="field-label">SN 码</text>
-          <input
-            v-model="sn"
-            class="form-input sn-input"
-            confirm-type="search"
-            placeholder="例如 CP20260615DEMO01"
-            @confirm="lookup"
-          />
+          <view class="query-heading">
+            <text class="query-title">吊牌查询</text>
+            <text class="query-subtitle">SN 码通常印在吊牌二维码下方</text>
+          </view>
+
+          <view class="sn-field">
+            <text class="field-label">SN 码</text>
+            <input
+              v-model="sn"
+              class="sn-input"
+              confirm-type="search"
+              placeholder="例如 CP20260615DEMO01"
+              @confirm="lookup"
+            />
+          </view>
+
           <view class="actions">
-            <button class="primary-button" :disabled="loading" @click="lookup">
+            <button
+              class="home-button primary-query-button"
+              :disabled="loading"
+              hover-class="primary-query-button-hover"
+              @click="lookup"
+            >
               {{ loading ? '查询中' : '查询吊牌' }}
             </button>
-            <button class="secondary-button" @click="handleScan">
+            <button
+              class="home-button scan-button"
+              hover-class="scan-button-hover"
+              @click="handleScan"
+            >
               {{ scannerVisible ? '关闭扫码' : '扫描二维码' }}
             </button>
           </view>
+
           <text v-if="message" class="message-text">{{ message }}</text>
         </view>
 
@@ -41,25 +75,14 @@
           <text class="scanner-note">当前平台将调用系统扫码能力。</text>
           <!-- #endif -->
         </view>
-      </view>
 
-      <view class="hero-media">
-        <image class="hero-image" src="/static/tag-hero.png" mode="aspectFill" />
-      </view>
-    </view>
-
-    <view class="info-band">
-      <view class="info-item">
-        <text class="info-label">Fabric</text>
-        <text class="info-value">面料成分</text>
-      </view>
-      <view class="info-item">
-        <text class="info-label">Standard</text>
-        <text class="info-value">执行标准</text>
-      </view>
-      <view class="info-item">
-        <text class="info-label">Factory</text>
-        <text class="info-value">厂家信息</text>
+        <view class="trust-list">
+          <view v-for="item in trustItems" :key="item.title" class="trust-item">
+            <text class="trust-kicker">{{ item.kicker }}</text>
+            <text class="trust-title">{{ item.title }}</text>
+            <text class="trust-copy">{{ item.copy }}</text>
+          </view>
+        </view>
       </view>
     </view>
   </view>
@@ -75,6 +98,24 @@ const loading = ref(false);
 const message = ref('');
 const scannerVisible = ref(false);
 let html5Scanner = null;
+
+const trustItems = [
+  {
+    kicker: '01',
+    title: '正品核验',
+    copy: '校验吊牌状态，停用或异常会在详情页提示。'
+  },
+  {
+    kicker: '02',
+    title: '批次溯源',
+    copy: '同步展示款号、颜色尺码、生产日期与执行标准。'
+  },
+  {
+    kicker: '03',
+    title: '扫码复验',
+    copy: '二维码和 SN 输入共用同一套溯源结果。'
+  }
+];
 
 function normalizeInput() {
   return sn.value.trim().toUpperCase();
@@ -180,102 +221,279 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .home-page {
-  padding: 36rpx;
+  min-height: 100vh;
+  background: #f7f3ec;
 }
 
-.topbar {
+.phone-shell {
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 244, 237, 0.98) 23%, #f7f3ec 100%);
+  color: #151515;
+  box-shadow: 0 0 0 1px rgba(36, 31, 24, 0.04);
+}
+
+.home-topbar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  max-width: 1180px;
-  margin: 0 auto 42rpx;
+  justify-content: space-between;
+  gap: 20rpx;
+  min-height: 108rpx;
+  padding: 0 34rpx;
+  border-bottom: 1px solid rgba(210, 202, 190, 0.78);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.brand-block {
+  min-width: 0;
 }
 
 .brand-mark {
+  display: block;
   color: #151515;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.hero-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 44rpx;
-  max-width: 1180px;
-  margin: 0 auto;
+.brand-subtitle {
+  display: block;
+  margin-top: 8rpx;
+  color: #777168;
+  font-size: 22rpx;
+  line-height: 1.2;
 }
 
-.hero-copy {
+.status-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 46rpx;
+  padding: 0 18rpx;
+  border: 1px solid rgba(122, 160, 111, 0.38);
+  border-radius: 999rpx;
+  background: rgba(250, 255, 247, 0.76);
+  color: #5f8f55;
+  font-size: 22rpx;
+  font-weight: 690;
+}
+
+.home-content {
+  padding: 38rpx 34rpx 56rpx;
+}
+
+.verification-intro {
+  display: grid;
+  gap: 28rpx;
+}
+
+.intro-copy {
   min-width: 0;
 }
 
 .eyebrow {
   display: block;
-  color: #6f6a62;
+  color: #7b756c;
   font-size: 22rpx;
   font-weight: 700;
   letter-spacing: 0;
-  margin-bottom: 24rpx;
 }
 
 .hero-title {
   display: block;
-  max-width: 720rpx;
+  margin-top: 18rpx;
   color: #121212;
-  font-size: 62rpx;
-  font-weight: 680;
-  line-height: 1.12;
+  font-size: 48rpx;
+  font-weight: 760;
+  line-height: 1.16;
 }
 
 .hero-text {
   display: block;
-  max-width: 660rpx;
-  margin-top: 26rpx;
-  color: #5f5a52;
+  margin-top: 22rpx;
+  color: #656058;
   font-size: 28rpx;
-  line-height: 1.8;
+  line-height: 1.65;
+}
+
+.hero-media {
+  position: relative;
+  overflow: hidden;
+  min-height: 248rpx;
+  border: 1px solid #ded5c9;
+  border-radius: 18rpx;
+  background: #ebe6de;
+  box-shadow: 0 14rpx 32rpx rgba(74, 63, 45, 0.08);
+}
+
+.hero-image {
+  width: 100%;
+  height: 276rpx;
+  display: block;
+}
+
+.hero-caption {
+  position: absolute;
+  left: 22rpx;
+  bottom: 20rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 50rpx;
+  padding: 0 18rpx;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999rpx;
+  background: rgba(255, 253, 249, 0.88);
+  box-shadow: 0 8rpx 20rpx rgba(43, 36, 25, 0.12);
+}
+
+.caption-label {
+  color: #5f8f55;
+  font-size: 18rpx;
+  font-weight: 780;
+}
+
+.caption-value {
+  color: #171717;
+  font-size: 22rpx;
+  font-weight: 690;
 }
 
 .query-panel {
-  max-width: 720rpx;
-  margin-top: 42rpx;
-  padding: 30rpx;
-  border: 1px solid #ded7ce;
-  border-radius: 8rpx;
-  background: rgba(255, 253, 249, 0.92);
+  margin-top: 30rpx;
+  padding: 32rpx;
+  border: 1px solid #ded5c9;
+  border-radius: 18rpx;
+  background: rgba(255, 252, 245, 0.94);
+  box-shadow: 0 18rpx 34rpx rgba(80, 68, 45, 0.12);
+}
+
+.query-heading {
+  margin-bottom: 26rpx;
+}
+
+.query-title,
+.query-subtitle {
+  display: block;
+}
+
+.query-title {
+  color: #151515;
+  font-size: 34rpx;
+  font-weight: 740;
+  line-height: 1.25;
+}
+
+.query-subtitle {
+  margin-top: 10rpx;
+  color: #777168;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.sn-field {
+  min-width: 0;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 12rpx;
+  color: #625d55;
+  font-size: 24rpx;
 }
 
 .sn-input {
+  width: 100%;
+  min-height: 92rpx;
+  padding: 0 24rpx;
+  border: 1px solid #d5cab9;
+  border-radius: 10rpx;
+  background: #fffdf9;
+  color: #161616;
   font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 28rpx;
+  line-height: 92rpx;
+}
+
+.home-button {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  line-height: normal;
+}
+
+.home-button::after {
+  border: 0;
 }
 
 .actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 20rpx;
-  margin-top: 22rpx;
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+
+.primary-query-button,
+.scan-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.primary-query-button {
+  background: #171717;
+  color: #fff;
+}
+
+.primary-query-button-hover {
+  background: #2c2c2c;
+}
+
+.primary-query-button[disabled] {
+  opacity: 0.66;
+}
+
+.scan-button {
+  border: 1px solid #d5cab9;
+  background: #fffdf9;
+  color: #171717;
+}
+
+.scan-button-hover {
+  border-color: #7aa06f;
+  color: #5f8f55;
 }
 
 .message-text {
   display: block;
-  margin-top: 20rpx;
+  margin-top: 18rpx;
   color: #8d3c22;
   font-size: 24rpx;
+  line-height: 1.5;
 }
 
 .scanner-shell {
-  max-width: 720rpx;
-  margin-top: 24rpx;
+  margin-top: 22rpx;
   padding: 20rpx;
-  border: 1px solid #d8d1c7;
-  border-radius: 8rpx;
-  background: #fffdf9;
+  border: 1px solid #ded5c9;
+  border-radius: 16rpx;
+  background: rgba(255, 252, 245, 0.94);
 }
 
 .qr-reader {
   overflow: hidden;
-  min-height: 520rpx;
-  border-radius: 6rpx;
+  min-height: 500rpx;
+  border-radius: 10rpx;
 }
 
 .scanner-note {
@@ -283,124 +501,196 @@ onBeforeUnmount(() => {
   margin-top: 16rpx;
   color: #6b665f;
   font-size: 24rpx;
+  line-height: 1.5;
 }
 
-.hero-media {
-  overflow: hidden;
-  min-height: 520rpx;
-  border-radius: 8rpx;
-  border: 1px solid #e4ded6;
-  background: #ebe6de;
-}
-
-.hero-image {
-  width: 100%;
-  height: 620rpx;
-}
-
-.info-band {
+.trust-list {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 20rpx;
-  max-width: 1180px;
-  margin: 42rpx auto 0;
-  padding-top: 28rpx;
-  border-top: 1px solid #ddd6cc;
+  gap: 14rpx;
+  margin-top: 28rpx;
 }
 
-.info-item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24rpx;
+.trust-item {
+  display: grid;
+  grid-template-columns: 56rpx minmax(0, 1fr);
+  column-gap: 18rpx;
+  row-gap: 6rpx;
+  padding: 22rpx 0;
+  border-bottom: 1px solid rgba(216, 207, 193, 0.82);
 }
 
-.info-label {
-  color: #8a8379;
+.trust-item:last-child {
+  border-bottom: 0;
+}
+
+.trust-kicker {
+  grid-row: 1 / span 2;
+  color: #6e965f;
   font-size: 22rpx;
-  text-transform: uppercase;
+  font-weight: 780;
+  line-height: 1.4;
 }
 
-.info-value {
-  color: #242424;
+.trust-title,
+.trust-copy {
+  display: block;
+  min-width: 0;
+}
+
+.trust-title {
+  color: #151515;
   font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.trust-copy {
+  color: #777168;
+  font-size: 24rpx;
+  line-height: 1.55;
 }
 
 @media (min-width: 760px) {
   .home-page {
-    padding: 36px 42px;
+    background: #f0ebe3;
   }
 
-  .topbar {
-    margin-bottom: 56px;
+  .phone-shell {
+    min-height: 100vh;
+  }
+
+  .home-topbar {
+    min-height: 72px;
+    padding: 0 24px;
   }
 
   .brand-mark {
-    font-size: 14px;
+    font-size: 13px;
   }
 
-  .hero-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1fr);
-    align-items: center;
-    gap: 52px;
-  }
-
+  .brand-subtitle,
+  .status-chip,
   .eyebrow {
     font-size: 12px;
   }
 
+  .status-chip {
+    min-height: 26px;
+    padding: 0 10px;
+  }
+
+  .home-content {
+    padding: 28px 24px 42px;
+  }
+
+  .verification-intro {
+    gap: 18px;
+  }
+
   .hero-title {
-    max-width: 620px;
-    font-size: 54px;
+    margin-top: 12px;
+    font-size: 32px;
   }
 
   .hero-text {
-    max-width: 560px;
     font-size: 16px;
+    margin-top: 14px;
+  }
+
+  .hero-media {
+    min-height: 170px;
+    border-radius: 12px;
+  }
+
+  .hero-image {
+    height: 190px;
+  }
+
+  .hero-caption {
+    left: 14px;
+    bottom: 14px;
+    min-height: 30px;
+    padding: 0 12px;
+  }
+
+  .caption-label {
+    font-size: 10px;
+  }
+
+  .caption-value {
+    font-size: 12px;
   }
 
   .query-panel {
-    max-width: 540px;
-    margin-top: 34px;
-    padding: 24px;
+    margin-top: 22px;
+    padding: 22px;
+    border-radius: 12px;
+  }
+
+  .query-title {
+    font-size: 20px;
+  }
+
+  .query-subtitle,
+  .field-label,
+  .message-text,
+  .scanner-note,
+  .trust-copy {
+    font-size: 13px;
+  }
+
+  .sn-input {
+    min-height: 52px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 52px;
   }
 
   .actions {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .primary-query-button,
+  .scan-button {
+    min-height: 48px;
+    border-radius: 8px;
+    font-size: 15px;
   }
 
   .scanner-shell {
-    max-width: 540px;
-    padding: 16px;
+    padding: 14px;
   }
 
   .qr-reader {
     min-height: 320px;
   }
 
-  .hero-media {
-    min-height: 560px;
+  .trust-list {
+    gap: 0;
+    margin-top: 22px;
   }
 
-  .hero-image {
-    height: 620px;
+  .trust-item {
+    grid-template-columns: 38px minmax(0, 1fr);
+    column-gap: 12px;
+    padding: 15px 0;
   }
 
-  .info-band {
-    grid-template-columns: repeat(3, 1fr);
-    margin-top: 48px;
+  .trust-kicker {
+    font-size: 12px;
   }
 
-  .info-item {
-    display: block;
+  .trust-title {
+    font-size: 15px;
   }
+}
 
-  .info-value {
-    display: block;
-    margin-top: 8px;
-    font-size: 18px;
+@media (min-width: 960px) {
+  .phone-shell {
+    margin-top: 0;
+    margin-bottom: 0;
   }
 }
 </style>
