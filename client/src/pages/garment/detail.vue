@@ -1,37 +1,112 @@
 <template>
   <view class="page-shell detail-page">
-    <view class="detail-topbar">
-      <button class="ghost-button" @click="goHome">返回查询</button>
-    </view>
-
-    <view v-if="loading" class="state-block">
-      <text class="section-title">正在读取吊牌信息</text>
-      <text class="muted-text">请稍候。</text>
-    </view>
-
-    <view v-else-if="errorMessage" class="state-block">
-      <text class="section-title">{{ inactiveGarment ? '吊牌已停用' : '未找到吊牌' }}</text>
-      <text class="muted-text">{{ errorMessage }}</text>
-      <view v-if="inactiveGarment" class="inactive-preview">
-        <text class="preview-sn">{{ inactiveGarment.sn }}</text>
-        <text class="preview-name">{{ inactiveGarment.productName }}</text>
-      </view>
-    </view>
-
-    <view v-else-if="garment" class="detail-layout">
-      <view class="identity-panel">
-        <text class="eyebrow">AUTHENTIC GARMENT RECORD</text>
-        <text class="product-name">{{ garment.productName || '未命名产品' }}</text>
-        <text class="sn-code">{{ garment.sn }}</text>
-        <text :class="['status-pill', garment.status === 'inactive' ? 'inactive' : '']">
-          {{ garment.status === 'active' ? '有效吊牌' : '已停用' }}
-        </text>
+    <view class="phone-shell">
+      <view class="detail-topbar">
+        <button class="nav-button" hover-class="nav-button-hover" @click="goHome">
+          返回
+        </button>
+        <text class="topbar-title">可追溯更放心</text>
+        <view class="topbar-spacer"></view>
       </view>
 
-      <view class="detail-grid">
-        <view v-for="item in fields" :key="item.label" class="detail-row">
-          <text class="detail-label">{{ item.label }}</text>
-          <text class="detail-value">{{ item.value || '未录入' }}</text>
+      <view v-if="loading" class="state-shell">
+        <view class="state-card">
+          <text class="state-kicker">CYBER-PENDANT</text>
+          <text class="state-title">正在读取吊牌信息</text>
+          <text class="state-copy">正在核验溯源码，请稍候。</text>
+        </view>
+      </view>
+
+      <view v-else-if="currentGarment" class="detail-content">
+        <view :class="['verification-hero', isInactive ? 'inactive' : '']">
+          <view class="hero-copy">
+            <text class="hero-title">{{ isInactive ? '吊牌已停用' : '已通过质量检测' }}</text>
+            <text class="hero-subtitle">
+              {{ isInactive ? '当前不可作为有效溯源凭证' : '校服溯源 · 安心穿着' }}
+            </text>
+          </view>
+          <view :class="['verified-seal', isInactive ? 'inactive' : '']">
+            <text class="seal-main">{{ isInactive ? '停用' : '检验通过' }}</text>
+            <text class="seal-sub">{{ isInactive ? 'INACTIVE' : 'VERIFIED' }}</text>
+          </view>
+        </view>
+
+        <view :class="['assurance-card', isInactive ? 'inactive' : '']">
+          <text class="assurance-title">
+            {{ isInactive ? '该吊牌当前已停用' : '您查询的校服为正品' }}
+          </text>
+          <text class="assurance-copy">
+            {{ isInactive ? errorMessage || '如需确认状态，请联系生产企业。' : '信息来自 Cyber-Pendant 溯源系统' }}
+          </text>
+        </view>
+
+        <view class="product-heading">
+          <text class="product-name">{{ currentGarment.productName || '未命名校服' }}</text>
+          <text class="trace-code">溯源码：{{ currentGarment.sn }}</text>
+        </view>
+
+        <view class="hangtag-card">
+          <view class="tag-copy">
+            <view v-for="item in tagFields" :key="item.label" class="tag-row">
+              <text class="tag-label">{{ item.label }}：</text>
+              <text class="tag-value">{{ item.value || '未录入' }}</text>
+            </view>
+          </view>
+
+          <view class="tag-qr-panel">
+            <image
+              v-if="qrCodeSrc"
+              class="qr-code"
+              :src="qrCodeSrc"
+              mode="aspectFit"
+            />
+            <text class="qr-caption">扫码复验</text>
+          </view>
+        </view>
+
+        <button class="company-card" hover-class="company-card-hover" @click="toggleCompany">
+          <view class="company-main">
+            <text class="company-label">生产企业</text>
+            <text class="company-name">{{ currentGarment.manufacturer || '未录入生产企业' }}</text>
+          </view>
+          <text class="company-action">{{ companyExpanded ? '收起' : '详情' }}</text>
+        </button>
+
+        <view v-if="companyExpanded" class="company-detail">
+          <view v-for="item in companyFields" :key="item.label" class="company-row">
+            <text class="company-row-label">{{ item.label }}</text>
+            <text class="company-row-value">{{ item.value || '未录入' }}</text>
+          </view>
+        </view>
+
+        <view class="binding-card">
+          <view class="binding-badge">
+            <text class="binding-badge-text">身份</text>
+          </view>
+          <view class="binding-copy">
+            <text class="binding-title">该校服暂未绑定主人</text>
+            <text class="binding-text">绑定身份让校服有归属防丢失</text>
+          </view>
+          <button class="bind-button" hover-class="bind-button-hover" @click="handleBind">
+            立即绑定
+          </button>
+        </view>
+
+        <view class="support-footer">
+          <view class="footer-line"></view>
+          <text class="support-text">Cyber-Pendant 提供技术支持</text>
+          <view class="footer-line"></view>
+        </view>
+      </view>
+
+      <view v-else-if="errorMessage" class="state-shell">
+        <view class="state-card error">
+          <text class="state-kicker">CYBER-PENDANT</text>
+          <text class="state-title">未找到吊牌</text>
+          <text class="state-copy">{{ errorMessage }}</text>
+          <button class="state-action" hover-class="state-action-hover" @click="goHome">
+            返回查询
+          </button>
         </view>
       </view>
     </view>
@@ -41,33 +116,57 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
-import { getPublicGarment } from '../../utils/api.js';
+import { getPublicGarment, qrcodeUrl } from '../../utils/api.js';
 
 const loading = ref(true);
 const garment = ref(null);
 const inactiveGarment = ref(null);
 const errorMessage = ref('');
+const companyExpanded = ref(false);
 
-const fields = computed(() => {
-  const current = garment.value || inactiveGarment.value;
+const currentGarment = computed(() => garment.value || inactiveGarment.value);
+
+const isInactive = computed(() => {
+  const current = currentGarment.value;
+  return Boolean(current && current.status !== 'active');
+});
+
+const qrCodeSrc = computed(() => {
+  const current = currentGarment.value;
+  return current?.sn ? qrcodeUrl(current.sn, 'url') : '';
+});
+
+const tagFields = computed(() => {
+  const current = currentGarment.value;
   if (!current) {
     return [];
   }
 
   return [
+    { label: '商品名称', value: current.productName },
     { label: '款号', value: current.styleNo },
-    { label: '颜色', value: current.color },
-    { label: '尺码', value: current.size },
-    { label: '面料', value: current.fabric },
+    { label: '颜色尺码', value: [current.color, current.size].filter(Boolean).join(' / ') },
+    { label: '生产批次', value: current.batchNo },
+    { label: '生产日期', value: current.productionDate },
     { label: '执行标准', value: current.standard },
     { label: '安全类别', value: current.safetyCategory },
     { label: '质量等级', value: current.grade },
-    { label: '厂家', value: current.manufacturer },
-    { label: '厂家地址', value: current.manufacturerAddress },
+    { label: '面料成分', value: current.fabric },
     { label: '洗护说明', value: current.careInstructions },
-    { label: '批次标签', value: current.batchNo },
-    { label: '生产日期', value: current.productionDate },
-    { label: '备注', value: current.remark }
+    { label: '厂家信息', value: current.manufacturer }
+  ];
+});
+
+const companyFields = computed(() => {
+  const current = currentGarment.value;
+  if (!current) {
+    return [];
+  }
+
+  return [
+    { label: '企业名称', value: current.manufacturer },
+    { label: '企业地址', value: current.manufacturerAddress },
+    { label: '备注信息', value: current.remark }
   ];
 });
 
@@ -101,156 +200,541 @@ function goHome() {
   });
 }
 
+function toggleCompany() {
+  companyExpanded.value = !companyExpanded.value;
+}
+
+function handleBind() {
+  uni.showToast({
+    title: '绑定功能即将开放',
+    icon: 'none'
+  });
+}
+
 </script>
 
 <style scoped>
 .detail-page {
-  padding: 36rpx;
+  min-height: 100vh;
+  background: #f7f3ec;
+}
+
+.phone-shell {
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 244, 237, 0.96) 18%, #f7f3ec 100%);
+  color: #151515;
+  box-shadow: 0 0 0 1px rgba(36, 31, 24, 0.04);
 }
 
 .detail-topbar {
-  display: flex;
-  justify-content: flex-start;
-  gap: 18rpx;
-  max-width: 1080px;
-  margin: 0 auto 32rpx;
+  display: grid;
+  grid-template-columns: 128rpx minmax(0, 1fr) 128rpx;
+  align-items: center;
+  min-height: 108rpx;
+  padding: 0 34rpx;
+  border-bottom: 1px solid rgba(210, 202, 190, 0.78);
+  background: rgba(255, 255, 255, 0.82);
 }
 
-.state-block,
-.detail-layout {
-  max-width: 1080px;
-  margin: 0 auto;
+.nav-button,
+.state-action,
+.company-card,
+.bind-button {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  line-height: normal;
 }
 
-.state-block {
-  padding: 48rpx 0;
+.nav-button::after,
+.state-action::after,
+.company-card::after,
+.bind-button::after {
+  border: 0;
 }
 
-.state-block .muted-text {
-  display: block;
-  margin-top: 18rpx;
+.nav-button {
+  min-height: 64rpx;
+  padding: 0;
+  text-align: left;
+  font-size: 28rpx;
+  font-weight: 600;
 }
 
-.inactive-preview {
-  margin-top: 30rpx;
-  padding: 28rpx;
-  border: 1px solid #e0c4bc;
-  border-radius: 8rpx;
+.nav-button-hover {
+  color: #6b8f62;
+}
+
+.topbar-title {
+  min-width: 0;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 680;
+  line-height: 1.2;
+}
+
+.topbar-spacer {
+  min-height: 1px;
+}
+
+.state-shell {
+  padding: 42rpx 36rpx;
+}
+
+.state-card {
+  padding: 42rpx 36rpx;
+  border: 1px solid #ded5c9;
+  border-radius: 18rpx;
+  background: rgba(255, 252, 245, 0.94);
+  box-shadow: 0 14rpx 34rpx rgba(74, 63, 45, 0.08);
+}
+
+.state-card.error {
+  border-color: #e0c4bc;
   background: #fff9f6;
 }
 
-.preview-sn {
+.state-kicker,
+.state-title,
+.state-copy {
   display: block;
-  color: #8d3c22;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 24rpx;
 }
 
-.preview-name {
-  display: block;
-  margin-top: 8rpx;
-  color: #1a1a1a;
-  font-size: 32rpx;
-}
-
-.detail-layout {
-  display: grid;
-  gap: 28rpx;
-}
-
-.identity-panel {
-  padding: 34rpx;
-  border: 1px solid #ddd6cc;
-  border-radius: 8rpx;
-  background: #fffdf9;
-}
-
-.eyebrow {
-  display: block;
-  color: #746e65;
+.state-kicker {
+  color: #7b756c;
   font-size: 22rpx;
   font-weight: 700;
 }
 
-.product-name {
+.state-title {
+  margin-top: 18rpx;
+  color: #161616;
+  font-size: 40rpx;
+  font-weight: 720;
+}
+
+.state-copy {
+  margin-top: 14rpx;
+  color: #656058;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+.state-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 78rpx;
+  margin-top: 30rpx;
+  padding: 0 32rpx;
+  border-radius: 8rpx;
+  background: #171717;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 650;
+}
+
+.state-action-hover {
+  background: #2c2c2c;
+}
+
+.detail-content {
+  padding-bottom: 54rpx;
+}
+
+.verification-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28rpx;
+  padding: 58rpx 38rpx 34rpx;
+  border-bottom: 1px solid rgba(216, 207, 193, 0.82);
+}
+
+.verification-hero.inactive {
+  background: rgba(255, 249, 246, 0.56);
+}
+
+.hero-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.hero-title,
+.hero-subtitle,
+.seal-main,
+.seal-sub {
   display: block;
-  margin-top: 26rpx;
-  color: #111;
-  font-size: 50rpx;
-  font-weight: 680;
+}
+
+.hero-title {
+  color: #121212;
+  font-size: 46rpx;
+  font-weight: 760;
   line-height: 1.18;
 }
 
-.sn-code {
-  display: block;
-  margin: 24rpx 0;
-  color: #5f5a52;
-  font-family: "SFMono-Regular", Consolas, monospace;
+.hero-subtitle {
+  margin-top: 22rpx;
+  color: #777168;
   font-size: 28rpx;
+  line-height: 1.5;
 }
 
-.detail-grid {
-  display: grid;
-  gap: 16rpx;
+.verified-seal {
+  width: 142rpx;
+  height: 142rpx;
+  flex: 0 0 142rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 3rpx double #7aa06f;
+  border-radius: 999rpx;
+  color: #6e965f;
+  transform: rotate(-12deg);
+  background: rgba(250, 255, 247, 0.58);
 }
 
-.detail-row {
-  padding: 26rpx;
-  border: 1px solid #e2dbd1;
-  border-radius: 8rpx;
-  background: rgba(255, 253, 249, 0.86);
+.verified-seal.inactive {
+  border-color: #b68172;
+  color: #9a4a35;
+  background: rgba(255, 248, 244, 0.72);
 }
 
-.detail-label {
+.seal-main {
+  font-size: 22rpx;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.seal-sub {
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+
+.assurance-card {
+  margin: 34rpx 36rpx 0;
+  padding: 32rpx 36rpx;
+  border: 1px solid #ded5c8;
+  border-radius: 16rpx;
+  background: rgba(255, 252, 245, 0.86);
+}
+
+.assurance-card.inactive {
+  border-color: #e4c8be;
+  background: rgba(255, 249, 246, 0.9);
+}
+
+.assurance-title,
+.assurance-copy,
+.product-name,
+.trace-code {
   display: block;
-  color: #7a746b;
-  font-size: 24rpx;
 }
 
-.detail-value {
-  display: block;
-  margin-top: 10rpx;
-  color: #181818;
+.assurance-title {
+  color: #151515;
   font-size: 30rpx;
-  line-height: 1.65;
+  font-weight: 690;
+  line-height: 1.5;
 }
 
-@media (min-width: 860px) {
+.assurance-copy {
+  margin-top: 14rpx;
+  color: #777168;
+  font-size: 28rpx;
+  line-height: 1.55;
+}
+
+.product-heading {
+  padding: 44rpx 38rpx 26rpx;
+}
+
+.product-name {
+  color: #111;
+  font-size: 40rpx;
+  font-weight: 760;
+  line-height: 1.28;
+  word-break: break-word;
+}
+
+.trace-code {
+  margin-top: 18rpx;
+  color: #777168;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 26rpx;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.hangtag-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 154rpx;
+  gap: 22rpx;
+  margin: 0 36rpx;
+  padding: 34rpx 26rpx 30rpx 34rpx;
+  border: 1px solid #d5cab9;
+  border-radius: 18rpx;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 246, 0.96), rgba(248, 244, 233, 0.96));
+  box-shadow:
+    0 18rpx 34rpx rgba(80, 68, 45, 0.16),
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.9);
+}
+
+.tag-copy {
+  min-width: 0;
+}
+
+.tag-row {
+  display: grid;
+  grid-template-columns: 138rpx minmax(0, 1fr);
+  gap: 10rpx;
+  padding: 14rpx 0;
+  border-bottom: 1px dashed rgba(176, 163, 144, 0.62);
+}
+
+.tag-row:first-child {
+  padding-top: 0;
+}
+
+.tag-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.tag-label,
+.tag-value {
+  display: block;
+  color: #161616;
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+.tag-label {
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.tag-value {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.tag-qr-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-left: 22rpx;
+  border-left: 1px dashed rgba(176, 163, 144, 0.76);
+}
+
+.qr-code {
+  width: 116rpx;
+  height: 116rpx;
+}
+
+.qr-caption {
+  display: block;
+  margin-top: 14rpx;
+  color: #8a8379;
+  font-size: 20rpx;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.company-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  width: auto;
+  min-height: 112rpx;
+  margin: 36rpx 36rpx 0;
+  padding: 0 32rpx;
+  border: 1px solid #ded5c9;
+  border-radius: 16rpx;
+  background: rgba(255, 252, 246, 0.9);
+  text-align: left;
+}
+
+.company-card-hover {
+  background: #fffaf0;
+}
+
+.company-main {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 18rpx;
+}
+
+.company-label {
+  flex: 0 0 auto;
+  color: #171717;
+  font-size: 30rpx;
+  font-weight: 720;
+  line-height: 1.3;
+}
+
+.company-name {
+  min-width: 0;
+  color: #777168;
+  font-size: 28rpx;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-action {
+  flex: 0 0 auto;
+  color: #252525;
+  font-size: 26rpx;
+  font-weight: 650;
+}
+
+.company-detail {
+  margin: 16rpx 36rpx 0;
+  padding: 24rpx 30rpx;
+  border: 1px solid #e3dacd;
+  border-radius: 14rpx;
+  background: rgba(255, 252, 246, 0.72);
+}
+
+.company-row {
+  display: grid;
+  grid-template-columns: 136rpx minmax(0, 1fr);
+  gap: 14rpx;
+  padding: 12rpx 0;
+}
+
+.company-row-label,
+.company-row-value {
+  display: block;
+  font-size: 25rpx;
+  line-height: 1.55;
+}
+
+.company-row-label {
+  color: #777168;
+}
+
+.company-row-value {
+  color: #242424;
+  word-break: break-word;
+}
+
+.binding-card {
+  display: grid;
+  grid-template-columns: 96rpx minmax(0, 1fr) 182rpx;
+  align-items: center;
+  gap: 24rpx;
+  min-height: 138rpx;
+  margin: 36rpx 36rpx 0;
+  padding: 26rpx 28rpx;
+  border: 1px solid #ded5c9;
+  border-radius: 16rpx;
+  background: rgba(255, 252, 246, 0.92);
+}
+
+.binding-badge {
+  width: 86rpx;
+  height: 86rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: #eee9df;
+  color: #5f584d;
+}
+
+.binding-badge-text {
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.binding-copy {
+  min-width: 0;
+}
+
+.binding-title,
+.binding-text {
+  display: block;
+}
+
+.binding-title {
+  color: #151515;
+  font-size: 30rpx;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.binding-text {
+  margin-top: 10rpx;
+  color: #777168;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.bind-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76rpx;
+  padding: 0 22rpx;
+  border-radius: 8rpx;
+  background: #171717;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 650;
+}
+
+.bind-button-hover {
+  background: #2b2b2b;
+}
+
+.support-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+  padding: 44rpx 36rpx 0;
+}
+
+.footer-line {
+  width: 68rpx;
+  height: 1px;
+  background: #dad2c7;
+}
+
+.support-text {
+  color: #8a8379;
+  font-size: 24rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (min-width: 720px) {
   .detail-page {
-    padding: 38px 42px;
+    padding: 24px 0;
   }
 
-  .detail-layout {
-    grid-template-columns: 360px minmax(0, 1fr);
-    align-items: start;
-    gap: 28px;
-  }
-
-  .identity-panel {
-    position: sticky;
-    top: 32px;
-    padding: 28px;
-  }
-
-  .product-name {
-    font-size: 36px;
-  }
-
-  .sn-code {
-    font-size: 15px;
-  }
-
-  .detail-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-
-  .detail-row {
-    padding: 18px;
-  }
-
-  .detail-value {
-    font-size: 15px;
+  .phone-shell {
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow:
+      0 24px 80px rgba(38, 32, 24, 0.14),
+      0 0 0 1px rgba(44, 36, 26, 0.06);
   }
 }
 </style>
