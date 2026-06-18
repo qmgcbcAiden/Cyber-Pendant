@@ -300,6 +300,57 @@ CP20260615DEMO01
 
 生产环境建议优先停用，谨慎真删除。
 
+## 待办事项（TODO）
+
+### 用户系统与防丢功能
+
+**安全原则：客户端零信任** — 所有安全验证必须在服务端完成，不信任任何来自客户端的输入或声明。详见 [memory/security-principles.md](memory/security-principles.md)。
+
+当前系统缺少用户登录和完整的防丢失功能，计划实施以下改进：
+
+#### 阶段 1：基础用户系统（1-2 周）
+- [ ] 创建 `users` 表（微信 openid、昵称、头像、手机号）
+- [ ] 实现微信登录 API (`POST /api/auth/wechat/login`)
+- [ ] 实现用户 Token 验证中间件（与 admin token 分离）
+- [ ] 前端微信登录流程（wx.login 授权）
+- [ ] 环境变量配置（`WECHAT_APP_ID`、`WECHAT_APP_SECRET`、`USER_TOKEN_SECRET`）
+
+#### 阶段 2：绑定鉴权（1 周）
+- [ ] 修改 `garments` 表添加 `bound_by_user_id` 字段
+- [ ] 创建 `binding_logs` 表（审计绑定操作）
+- [ ] 修改绑定 API 增加登录鉴权
+- [ ] 实现解绑 API（只有绑定者可解绑）
+- [ ] 实现修改绑定信息 API
+- [ ] 前端登录状态检查和登录跳转
+
+#### 阶段 3：防丢功能（1-2 周）
+- [ ] 创建 `lost_reports` 表
+- [ ] 修改 `garments` 表添加 `lost_report_id` 字段
+- [ ] 实现报告丢失 API (`POST /api/garments/{sn}/report-lost`)
+- [ ] 实现取消报失 API (`DELETE /api/garments/{sn}/report-lost`)
+- [ ] 修改查询 API，丢失时返回完整联系方式
+- [ ] 实现联系方式曝光统计 (`POST /api/garments/{sn}/contact-reveal`)
+- [ ] 前端报告丢失流程和"查看联系方式"弹窗
+
+#### 阶段 4：用户中心（1 周）
+- [ ] 实现我的衣服 API (`GET /api/user/garments`)
+- [ ] 实现我的丢失报告 API (`GET /api/user/lost-reports`)
+- [ ] 实现绑定历史 API (`GET /api/user/binding-logs`)
+- [ ] 前端用户中心页面（我的衣服、我的报告）
+- [ ] 前端底部 TabBar 导航
+
+#### 阶段 5：完善与优化（1 周）
+- [ ] IP 和 SN 限流（防刷）
+- [ ] 数据脱敏策略完善（正常/丢失/管理员三种模式）
+- [ ] 并发绑定处理（事务 + 乐观锁）
+- [ ] 恶意报告丢失防护（30 天自动过期）
+- [ ] 用户封禁机制
+- [ ] 完整的单元测试和集成测试
+
+**详细设计文档**：参见 [memory/detailed-logic-design.md](memory/detailed-logic-design.md)
+
+---
+
 ## 测试
 
 ```bash
