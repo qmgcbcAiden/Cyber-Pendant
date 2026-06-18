@@ -7,12 +7,20 @@ function request(path, options = {}) {
       ...(options.header || {})
     };
 
+    const fullUrl = `${API_BASE_URL}${path}`;
+    console.log('[API Debug] Starting request:', {
+      url: fullUrl,
+      method: options.method || 'GET',
+      data: options.data
+    });
+
     uni.request({
-      url: `${API_BASE_URL}${path}`,
+      url: fullUrl,
       method: options.method || 'GET',
       data: options.data,
       header: headers,
       success(response) {
+        console.log('[API Debug] Request success:', response);
         const ok = response.statusCode >= 200 && response.statusCode < 300;
         if (ok) {
           resolve(response.data);
@@ -26,6 +34,7 @@ function request(path, options = {}) {
         });
       },
       fail(error) {
+        console.log('[API Debug] Request fail:', error);
         reject({
           statusCode: 0,
           message: error.errMsg || '网络连接失败'

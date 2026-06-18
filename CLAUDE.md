@@ -11,6 +11,10 @@ Cyber-Pendant is a digital garment hang tag system. Users scan QR codes or enter
 - **`server/admin/`**: standalone Vue 3 + Vite admin console served by the backend after build
 - **`data/`**: Local SQLite database (runtime-generated, gitignored)
 
+## Requirements
+
+- Node.js >= 24.0.0
+
 ## Commands
 
 ```bash
@@ -39,10 +43,11 @@ npm test             # node --test server/test/*.test.js
 Entry point: `server/src/index.js` → `api.js` (HTTP routing & handlers)
 
 Core modules:
-- `db.js`: SQLite schema, migrations, garment CRUD queries. Uses `FIELD_MAP` to convert camelCase ↔ snake_case between API and database.
+- `db.js`: SQLite schema, migrations, garment CRUD queries. Three-layer data model (clothes → garment_batches → garments). Uses `FIELD_MAP`, `CLOTHING_FIELD_MAP`, `BATCH_FIELD_MAP` to convert camelCase ↔ snake_case between API and database.
 - `auth.js`: PBKDF2 password hashing, custom JWT-like token (HMAC-SHA256, 7-day TTL)
-- `sn.js`: SN code generation (`CP{YYYYMMDD}{6-char-alphanum}`)
+- `sn.js`: SN code generation (`CP{YYYYMMDD}{6-char-alphanum}`), excludes confusing chars (0, O, I, 1)
 - `config.js`: Loads `server/.env`, manages runtime config
+- `prepare-admin.js`: Auto-installs and builds admin console when `server/admin/dist` is missing or stale
 
 API design (no framework):
 - Manual routing via `pathname` patterns in `route()` function
@@ -77,14 +82,24 @@ Demo SN: `CP20260615DEMO01`
 
 ## Database Schema
 
-Two tables:
-- `admins`: id, username, password_hash, created_at
-- `garments`: id, sn, product_name, style_no, color, size, fabric, standard, safety_category, grade, manufacturer, manufacturer_address, care_instructions, batch_no, production_date, remark, status (active/inactive), created_at, updated_at
+The system uses a three-layer data model (garment master data → production batches → individual SNs):
 
-Seeds: one admin (if none exists), one demo garment (if table empty)
+- **`admins`**: id, username, password_hash, created_at
+- **`clothes`** (garment master data): id, product_name, fabric, standard, safety_category, grade, manufacturer, manufacturer_address, care_instructions, remark, status (active/inactive), created_at, updated_at
+- **`garment_batches`** (production batches): id, clothing_id (FK → clothes), style_no, color, size, batch_no, production_date, remark, status, created_at, updated_at
+- **`garments`** (individual SN records): id, clothing_id (FK → clothes), batch_id (FK → garment_batches), sn (unique), query_count, binding fields (student_name, student_school, etc.), status, created_at, updated_at
+  - Also stores denormalized/legacy columns for backward compatibility
+- **`garment_styles`** (legacy table): Used for migrating old single-table data to the three-layer model
+
+Seeds: one admin (if none exists), one demo garment with associated clothing/batch records (if tables empty)
+
+The `backfillThreeLayerData()` function in `db.js` automatically migrates legacy records to the three-layer structure on startup.
 
 ## Testing
 
 Tests use Node.js built-in test runner (`node:test`). Each test creates an in-memory temp database. Pattern: `startTestServer()` → run fetch requests → assert response status/body.
 
-Run individual test: `node --test server/test/api.test.js`
+Run individual test:
+```bash
+node --test server/test/api.test.js
+```
