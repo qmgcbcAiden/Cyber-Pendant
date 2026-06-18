@@ -50,14 +50,14 @@
               class="home-button primary-query-button"
               :disabled="loading"
               hover-class="primary-query-button-hover"
-              @click="lookup"
+              @click="() => lookup()"
             >
               {{ loading ? '查询中' : '查询吊牌' }}
             </button>
             <button
               class="home-button scan-button"
               hover-class="scan-button-hover"
-              @click="handleScan"
+              @click="() => handleScan()"
             >
               {{ scannerVisible ? '关闭扫码' : '扫描二维码' }}
             </button>
@@ -93,6 +93,10 @@ import { nextTick, onBeforeUnmount, ref } from 'vue';
 import { getPublicGarment } from '../../utils/api.js';
 import { extractSnFromScan, scanWithPlatform } from '../../utils/scanner.js';
 
+// Debug: Log when page is loaded
+console.log('[Page Init] Home page loaded');
+console.log('[Page Init] Current platform:', process.env.UNI_PLATFORM);
+
 const sn = ref('');
 const loading = ref(false);
 const message = ref('');
@@ -122,23 +126,31 @@ function normalizeInput() {
 }
 
 async function lookup() {
+  console.log('[Lookup] Function called');
   const code = normalizeInput();
+  console.log('[Lookup] Normalized SN:', code);
   message.value = '';
 
   if (!code) {
+    console.log('[Lookup] Empty SN, showing error');
     message.value = '请输入 SN 码。';
     return;
   }
 
+  console.log('[Lookup] Starting query for SN:', code);
   loading.value = true;
 
   try {
+    console.log('[Lookup] Calling getPublicGarment...');
     await getPublicGarment(code, { track: false });
+    console.log('[Lookup] Query successful, navigating to detail page');
     uni.navigateTo({
       url: `/pages/garment/detail?sn=${encodeURIComponent(code)}`
     });
   } catch (error) {
+    console.log('[Lookup] Query failed:', error);
     if (error.statusCode === 423) {
+      console.log('[Lookup] Status 423, navigating to detail page anyway');
       uni.navigateTo({
         url: `/pages/garment/detail?sn=${encodeURIComponent(code)}`
       });
@@ -146,30 +158,40 @@ async function lookup() {
     }
     message.value = error.message || '未找到该吊牌信息。';
   } finally {
+    console.log('[Lookup] Setting loading to false');
     loading.value = false;
   }
 }
 
 async function handleScan() {
+  console.log('[Scan] Handle scan called');
   message.value = '';
 
   // #ifdef H5
+  console.log('[Scan] H5 platform detected');
   if (scannerVisible.value) {
+    console.log('[Scan] Stopping H5 scanner');
     await stopH5Scanner();
     return;
   }
 
+  console.log('[Scan] Starting H5 scanner');
   scannerVisible.value = true;
   await nextTick();
   await startH5Scanner();
   // #endif
 
   // #ifndef H5
+  console.log('[Scan] Non-H5 platform, calling platform scan API');
   try {
     const scanned = await scanWithPlatform();
-    sn.value = extractSnFromScan(scanned);
+    console.log('[Scan] Scan result:', scanned);
+    const extracted = extractSnFromScan(scanned);
+    console.log('[Scan] Extracted SN:', extracted);
+    sn.value = extracted;
     await lookup();
   } catch (error) {
+    console.log('[Scan] Scan failed:', error);
     message.value = error.message || '扫码失败，请手动输入 SN。';
   }
   // #endif

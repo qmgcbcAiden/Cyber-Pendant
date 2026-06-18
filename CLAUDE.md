@@ -62,6 +62,35 @@ API design (no framework):
 - `src/utils/api.js`: Public garment lookup/binding API wrapper only
 - `src/utils/scanner.js`: QR scanning; handles WeChat Mini Program vs H5 divergence via conditional compilation (`#ifdef MP-WEIXIN`)
 
+## Known Issues & Workarounds
+
+### WeChat Mini Program: Button Click Events Not Working
+
+**Issue**: When using Vue 3 `<script setup>` syntax in uni-app, button click events may not respond when using the standard `@click="functionName"` syntax.
+
+**Symptoms**:
+- Console logs show page loads successfully
+- Button clicks produce no response, no console output
+- Network requests are not initiated
+
+**Workaround**: Use inline arrow functions instead of direct function references:
+
+```vue
+<!-- ❌ Does NOT work in WeChat Mini Program -->
+<button @click="lookup">查询吊牌</button>
+<button @click="handleScan">扫描二维码</button>
+
+<!-- ✅ Works correctly -->
+<button @click="() => lookup()">查询吊牌</button>
+<button @click="() => handleScan()">扫描二维码</button>
+```
+
+**Note**: According to uni-app official documentation, `@click="functionName"` should work in `<script setup>`. This appears to be a bug in the uni-app compiler or WeChat DevTools. Report this to uni-app if issues persist.
+
+**Affected Files** (using workaround):
+- `client/src/pages/index/index.vue`
+- `client/src/pages/garment/detail.vue`
+
 ### Admin Console (Vue 3 + Vite)
 
 - `server/admin/src/router.js`: hash router (`#/login`, `#/dashboard`, `#/clothes/:id`)

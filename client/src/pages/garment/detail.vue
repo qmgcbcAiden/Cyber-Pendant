@@ -6,7 +6,7 @@
           class="nav-button"
           hover-class="nav-button-hover"
           aria-label="返回查询"
-          @click="goHome"
+          @click="() => goHome()"
         >
           <text class="nav-chevron">‹</text>
           <text class="nav-text">返回</text>
@@ -91,7 +91,7 @@
           </view>
         </view>
 
-        <button class="company-card" hover-class="company-card-hover" @click="toggleCompany">
+        <button class="company-card" hover-class="company-card-hover" @click="() => toggleCompany()">
           <view class="company-main">
             <text class="company-label">生产企业</text>
             <text class="company-name">{{ currentGarment.manufacturer || '未录入生产企业' }}</text>
@@ -117,7 +117,7 @@
           <button
             :class="['bind-button', isBound || isInactive ? 'disabled' : '']"
             hover-class="bind-button-hover"
-            @click="handleBind"
+            @click="() => handleBind()"
           >
             {{ isBound ? '已绑定' : isInactive ? '不可绑定' : '立即绑定' }}
           </button>
@@ -135,7 +135,7 @@
           <text class="state-kicker">CYBER-PENDANT</text>
           <text class="state-title">未找到吊牌</text>
           <text class="state-copy">{{ errorMessage }}</text>
-          <button class="state-action" hover-class="state-action-hover" @click="goHome">
+          <button class="state-action" hover-class="state-action-hover" @click="() => goHome()">
             返回查询
           </button>
         </view>
@@ -145,7 +145,7 @@
         <view class="bind-panel" @click.stop>
           <view class="bind-panel-header">
             <text class="bind-panel-title">绑定学生信息</text>
-            <button class="bind-close" hover-class="bind-close-hover" @click="closeBindingPanel">
+            <button class="bind-close" hover-class="bind-close-hover" @click="() => closeBindingPanel()">
               关闭
             </button>
           </view>
@@ -205,7 +205,7 @@
             class="bind-submit"
             :disabled="bindingSubmitting"
             hover-class="bind-submit-hover"
-            @click="submitBinding"
+            @click="() => submitBinding()"
           >
             {{ bindingSubmitting ? '绑定中' : '确认绑定' }}
           </button>
