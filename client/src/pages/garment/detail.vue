@@ -482,7 +482,17 @@ async function submitBinding() {
     linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 244, 237, 0.96) 18%, #f7f3ec 100%);
   color: #151515;
   box-shadow: 0 0 0 1px rgba(36, 31, 24, 0.04);
+  /* 微信小程序状态栏安全区域 */
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
 }
+
+/* 微信小程序额外安全区域补偿 */
+/* #ifdef MP-WEIXIN */
+.phone-shell {
+  padding-top: 88rpx; /* 状态栏 + 导航栏空间 */
+}
+/* #endif */
 
 .detail-topbar {
   display: grid;
