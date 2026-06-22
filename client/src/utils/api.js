@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://10.201.17.250:8787';
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8787';
 
 // Debug: Log when API module is loaded
 console.log('[API Init] ==================== API Module Loaded ====================');
