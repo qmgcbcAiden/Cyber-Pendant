@@ -402,27 +402,36 @@
       </div>
     </div>
   </div>
+
+  <ExportModal
+    :is-open="exportModalOpen"
+    :batch="selectedBatchForExport"
+    :qr-mode="qrMode"
+    :clothing="clothing"
+    @close="closeExportModal"
+    @export-complete="handleExportComplete"
+    @export-error="handleExportError"
+  />
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import * as XLSX from 'xlsx';
+import ExportModal from '../components/ExportModal.vue';
 import {
   clearToken,
   createClothingBatch,
   deleteBatch,
   deleteClothing,
   deleteGarment,
-  downloadBatchQrCodes,
   getClothing,
   getQrcodeMode,
   listClothingBatches,
   publicGarmentDetailUrl,
+  qrcodeUrl,
   QRCODE_MODE_MINIPROGRAM,
   QRCODE_MODE_SN,
   QRCODE_MODE_URL,
-  qrcodeUrl,
   saveQrcodeMode,
   unbindGarmentBinding as unbindGarmentBindingApi,
   updateBatch,
@@ -477,20 +486,6 @@ const standardPlaceholder = [
   'GB 31701-2015'
 ].join('\n');
 
-const exportColumns = [
-  { key: 'clothingName', label: '衣服名称' },
-  { key: 'standard', label: '执行标准' },
-  { key: 'styleNo', label: '款号' },
-  { key: 'color', label: '颜色' },
-  { key: 'size', label: '尺码' },
-  { key: 'sn', label: 'SN' },
-  { key: 'batchNo', label: '批次标签' },
-  { key: 'productionDate', label: '生产日期' },
-  { key: 'detailUrl', label: '详情页链接' },
-  { key: 'qrModeLabel', label: '二维码模式' },
-  { key: 'qrUrl', label: '二维码图片链接' }
-];
-
 const clothingId = ref('');
 const clothing = ref(null);
 const batches = ref([]);
@@ -505,6 +500,8 @@ const expandedBatchIds = ref([]);
 const openBatchToolsId = ref('');
 const expandedBindingSns = ref([]);
 const qrMode = ref(getQrcodeMode());
+const exportModalOpen = ref(false);
+const selectedBatchForExport = ref(null);
 const pageMessage = ref('');
 const clothingMessage = ref('');
 const batchMessage = ref('');
@@ -658,10 +655,6 @@ function standardDisplayText(value) {
   return items.length ? items.join('；') : '';
 }
 
-function formatStandardForExport(value) {
-  const items = splitStandardList(value);
-  return items.length ? items.join('；') : String(value || '').trim();
-}
 
 function isBatchExpanded(batchId) {
   return expandedBatchIds.value.includes(String(batchId));
@@ -1047,157 +1040,31 @@ function chooseExportFormat(batch) {
     batchMessage.value = '该批次暂无 SN 可导出。';
     return;
   }
+  selectedBatchForExport.value = batch;
+  exportModalOpen.value = true;
+}
 
-  const choice = window.prompt(
-    '导出格式：\n输入 1 下载 Excel 表格\n输入 2 下载 CSV 清单\n输入 3 批量下载二维码（ZIP文件）',
-    '1'
-  );
-
-  if (choice === '1') {
-    exportExcel(batch);
-  } else if (choice === '2') {
-    exportCsv(batch);
-  } else if (choice === '3') {
-    downloadBatchQrCodesImpl(batch);
+function handleExportComplete(result) {
+  const batch = selectedBatchForExport.value;
+  if (batch) {
+    batchMessage.value = `成功导出 ${batchLabel(batch)}！`;
+    setTimeout(() => {
+      batchMessage.value = '';
+    }, 3000);
   }
 }
 
-function getExportRows(batch) {
-  return (batch.garments || []).map((record) => ({
-    clothingName: clothing.value?.productName || record.productName || '',
-    standard: formatStandardForExport(clothing.value?.standard || record.standard || ''),
-    styleNo: batch.styleNo || record.styleNo || '',
-    color: batch.color || record.color || '',
-    size: batch.size || record.size || '',
-    sn: record.sn,
-    batchNo: batch.batchNo || record.batchNo || '',
-    productionDate: batch.productionDate || record.productionDate || '',
-    detailUrl: detailPageUrl(record.sn),
-    qrModeLabel: qrModeLabel.value,
-    qrUrl: qrcodeUrl(record.sn, qrMode.value)
-  }));
+function handleExportError(error) {
+  batchMessage.value = `导出失败：${error.message || '未知错误'}`;
 }
 
-function exportCsv(batch) {
-  const rows = getExportRows(batch);
-  const header = exportColumns.map((column) => column.label);
-  const body = rows.map((row) => exportColumns.map((column) => csvCell(row[column.key])));
-  const csv = `\uFEFF${[header, ...body].map((line) => line.join(',')).join('\r\n')}`;
-  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${exportFileName(batch)}.csv`);
-}
-
-function exportExcel(batch) {
-  const rows = getExportRows(batch);
-  const sheetData = [
-    exportColumns.map((column) => column.label),
-    ...rows.map((row) => exportColumns.map((column) => row[column.key] || ''))
-  ];
-  const sheet = XLSX.utils.aoa_to_sheet(sheetData);
-  sheet['!cols'] = [
-    { wch: 18 },
-    { wch: 28 },
-    { wch: 16 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 22 },
-    { wch: 20 },
-    { wch: 14 },
-    { wch: 36 },
-    { wch: 14 },
-    { wch: 52 }
-  ];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, '批次吊牌码');
-  const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  downloadBlob(
-    new Blob([data], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    }),
-    `${exportFileName(batch)}.xlsx`
-  );
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+function closeExportModal() {
+  exportModalOpen.value = false;
+  selectedBatchForExport.value = null;
 }
 
 function detailPageUrl(sn) {
   return publicGarmentDetailUrl(sn);
-}
-
-function exportFileName(batch) {
-  const name = batch.styleNo || clothing.value?.productName || '未命名衣服';
-  return `吊牌码-${sanitizeFilePart(name)}-${formatTimestamp(new Date())}`;
-}
-
-function sanitizeFilePart(value) {
-  return String(value || '未命名衣服')
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, '-')
-    .replace(/\s+/g, '-');
-}
-
-function formatTimestamp(date) {
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
-}
-
-function downloadBlob(blob, filename) {
-  if (typeof document === 'undefined') {
-    batchMessage.value = '当前平台暂不支持文件下载。';
-    return;
-  }
-
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  URL.revokeObjectURL(link.href);
-  link.remove();
-}
-
-async function downloadBatchQrCodesImpl(batch) {
-  if (!batch.garments?.length) {
-    batchMessage.value = '该批次暂无 SN 可下载。';
-    return;
-  }
-
-  const count = batch.garments.length;
-  const type = qrMode.value;
-
-  // 如果是小程序码，需要警告用户
-  if (type === QRCODE_MODE_MINIPROGRAM) {
-    const confirmed = window.confirm(
-      `即将生成 ${count} 个微信小程序码，这可能需要 1-2 分钟。\n\n` +
-      `微信API限制：5000次/分钟\n` +
-      `当前批次SN数量：${count}\n\n` +
-      `是否继续？`
-    );
-    if (!confirmed) {
-      return;
-    }
-  }
-
-  batchMessage.value = `正在生成 ${count} 个二维码，请稍候...`;
-
-  try {
-    await downloadBatchQrCodes(batch.id, type);
-    batchMessage.value = `成功下载 ${count} 个二维码！`;
-    setTimeout(() => {
-      batchMessage.value = '';
-    }, 3000);
-  } catch (error) {
-    console.error('Failed to download batch QR codes:', error);
-    if (error.statusCode === 400) {
-      batchMessage.value = `生成失败：${error.message}。请检查微信配置或使用传统二维码模式。`;
-    } else if (error.statusCode === 502) {
-      batchMessage.value = `生成失败：微信API调用失败。请稍后重试或使用传统二维码模式。`;
-    } else {
-      batchMessage.value = `下载失败：${error.message || '未知错误'}`;
-    }
-  }
 }
 
 function openDetail(sn) {
