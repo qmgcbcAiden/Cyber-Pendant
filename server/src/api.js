@@ -1101,12 +1101,11 @@ async function handleQrCode(req, res, context, sn, searchParams) {
 
   const type = normalizeQrType(searchParams.get('type'));
 
-  // 微信小程序码（圆形）：使用微信API生成
+  // 微信小程序码（圆形）：使用微信 getwxacodeunlimit 接口生成
   if (type === 'mini-program') {
     let qrImage;
     let fetchError = null;
 
-    // 只有在有真实 wechatAppId 和 wechatAppSecret（非空）时才尝试生成小程序码
     const hasValidWechatConfig =
       context.config.wechatAppId &&
       context.config.wechatAppSecret &&
@@ -1117,7 +1116,6 @@ async function handleQrCode(req, res, context, sn, searchParams) {
 
     if (hasValidWechatConfig) {
       try {
-        // 获取 access_token
         let accessToken;
         if (context.config.wechatAccessTokenProvider) {
           const tokenResult = await context.config.wechatAccessTokenProvider();
@@ -1131,7 +1129,7 @@ async function handleQrCode(req, res, context, sn, searchParams) {
           accessToken = tokenResult.accessToken;
         }
 
-        // 生成小程序码
+        // 生成圆形小程序码，使用 scene 参数传递 SN
         const qrFetchImpl = context.config.wechatMiniProgramCodeProvider || fetch;
         const qrResult = await getWechatUnlimitedQRCode(
           {
@@ -1149,11 +1147,9 @@ async function handleQrCode(req, res, context, sn, searchParams) {
         fetchError = error;
       }
     } else {
-      // 没有有效的微信配置，将回退到传统二维码
       fetchError = new Error('微信小程序配置缺失或不完整');
     }
 
-    // 如果小程序码生成失败或没有配置，回退到传统二维码
     if (fetchError || !qrImage) {
       console.log('Mini-program QR code generation failed, falling back to traditional QR:', fetchError?.message);
       const fallbackContent = detailUrl(context.config, sn);
@@ -1351,6 +1347,7 @@ async function handleBatchQrCodes(req, res, context, searchParams) {
 
       if (type === 'mini-program') {
         try {
+          // 生成圆形小程序码，使用 scene 参数传递 SN
           const qrResult = await getWechatUnlimitedQRCode(
             {
               accessToken,

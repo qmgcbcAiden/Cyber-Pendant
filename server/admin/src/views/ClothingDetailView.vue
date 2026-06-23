@@ -532,8 +532,8 @@ const clothingInfoRows = computed(() => [
 const qrModeOptions = [
   {
     value: QRCODE_MODE_URL,
-    label: 'H5 链接二维码',
-    description: '普通正方形二维码，内容为 H5 详情页链接，微信扫码打开浏览器。'
+    label: 'H5 链接二维码（推荐）',
+    description: '通用正方形二维码，内容为 H5 详情页链接。兼容性最强，支持所有扫码场景。'
   },
   {
     value: QRCODE_MODE_MINIPROGRAM_SQUARE,
@@ -542,7 +542,7 @@ const qrModeOptions = [
   },
   {
     value: QRCODE_MODE_MINIPROGRAM,
-    label: '微信小程序码',
+    label: '微信小程序码（圆形）',
     description: '圆形微信小程序码，微信扫码直接进入小程序；需要配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET。'
   },
   {
@@ -560,13 +560,13 @@ const qrModeLabel = computed(() => {
 const qrModeHelp = computed(() => {
   switch (qrMode.value) {
     case QRCODE_MODE_MINIPROGRAM:
-      return '当前导出生成圆形微信小程序码，微信扫码直接进入小程序；需要配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET。';
+      return '当前导出生成圆形微信小程序码，参数通过 path 传递；支持微信扫码和小程序内扫码；需要配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET。';
     case QRCODE_MODE_MINIPROGRAM_SQUARE:
-      return '当前导出生成正方形微信小程序二维码，微信扫码直接进入小程序；需要配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET。';
+      return '当前导出生成正方形微信小程序二维码，参数通过 path 传递；支持微信扫码和小程序内扫码；需要配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET。';
     case QRCODE_MODE_SN:
-      return '当前导出生成原始 SN 码二维码，内容仅为 SN 文本。';
+      return '当前导出生成原始 SN 码二维码，内容仅为 SN 文本，适合内部扫描设备使用。';
     default:
-      return '当前导出会生成 H5 链接二维码，扫码内容为详情页链接；微信扫码打开浏览器。';
+      return '当前导出生成 H5 链接二维码，兼容性最强，支持所有扫码场景（微信扫码、小程序内扫码、普通扫码工具）。';
   }
 });
 

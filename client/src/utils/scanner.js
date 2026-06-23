@@ -12,6 +12,24 @@ export function extractSnFromScan(rawValue) {
   return sn;
 }
 
+/**
+ * 检查扫码结果是否为空或无效
+ * @param {string} result - 扫码结果
+ * @returns {object} - { valid: boolean, reason: string }
+ */
+export function validateScanResult(result) {
+  const value = String(result || '').trim();
+
+  if (!value) {
+    return {
+      valid: false,
+      reason: '扫码结果为空，请重试或手动输入 SN 码。'
+    };
+  }
+
+  return { valid: true };
+}
+
 function resolveSnCandidate(value, depth = 0) {
   const candidate = extractSnCandidate(value);
   const decoded = safeDecodeURIComponent(candidate);
@@ -68,10 +86,21 @@ export async function scanWithPlatform() {
     console.log('[Scanner] Starting scan code...');
     uni.scanCode({
       onlyFromCamera: false,
-      scanType: ['qrCode', 'barCode'],
+      scanType: ['qrCode', 'barCode', 'wxCode'],
       success(result) {
         console.log('[Scanner] Scan success:', result);
-        resolve(extractSnFromScan(result.result));
+
+        // 优先使用 path 字段（扫描当前小程序二维码时会返回）
+        if (result.path && typeof result.path === 'string') {
+          console.log('[Scanner] Using path field from scan result:', result.path);
+          resolve(extractSnFromScan(result.path));
+        } else if (result.result && typeof result.result === 'string') {
+          console.log('[Scanner] Using result field from scan result:', result.result);
+          resolve(extractSnFromScan(result.result));
+        } else {
+          console.log('[Scanner] No valid scan result found');
+          reject(new Error('扫码结果无效'));
+        }
       },
       fail(error) {
         console.log('[Scanner] Scan failed:', error);

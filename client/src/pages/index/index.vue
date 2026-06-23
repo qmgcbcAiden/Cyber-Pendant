@@ -93,7 +93,7 @@
 import { nextTick, onBeforeUnmount, ref } from 'vue';
 import AppFooter from '../../components/AppFooter.vue';
 import { getPublicGarment } from '../../utils/api.js';
-import { extractSnFromScan, scanWithPlatform } from '../../utils/scanner.js';
+import { extractSnFromScan, scanWithPlatform, validateScanResult } from '../../utils/scanner.js';
 
 // Debug: Log when page is loaded
 console.log('[Page Init] Home page loaded');
@@ -239,8 +239,23 @@ async function handleScan() {
   try {
     const scanned = await scanWithPlatform();
     console.log('[Scan] Scan result:', scanned);
+
+    // 验证扫码结果
+    const validation = validateScanResult(scanned);
+    if (!validation.valid) {
+      console.log('[Scan] Scan validation failed:', validation.reason);
+      message.value = validation.reason;
+      return;
+    }
+
     const extracted = extractSnFromScan(scanned);
     console.log('[Scan] Extracted SN:', extracted);
+
+    if (!extracted) {
+      message.value = '无法从扫码结果中提取 SN 码。如果扫的是微信小程序码，请使用微信扫一扫或手动输入 SN 码。';
+      return;
+    }
+
     sn.value = extracted;
     await lookup();
   } catch (error) {
