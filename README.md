@@ -1,6 +1,6 @@
 # Cyber-Pendant
 
-Cyber-Pendant 是一个面向校服吊牌的数字溯源与防丢系统。管理员在后台维护衣服主档、生产批次和 SN，系统生成传统正方形二维码；用户通过微信小程序或 H5 扫码进入公开详情页，完成真伪核验、学生信息绑定、报失和联系方式披露。
+Cyber-Pendant 是一个面向校服吊牌的数字溯源与防丢系统。管理员在后台维护衣服主档、生产批次和 SN，系统生成多种类型二维码；用户通过微信小程序或 H5 扫码进入公开详情页，完成真伪核验、学生信息绑定、报失和联系方式披露。
 
 ![后端托管管理台示意图](assets/cyber-pendant-readme-illustrations/01-server-admin-separation.png)
 
@@ -8,7 +8,7 @@ Cyber-Pendant 是一个面向校服吊牌的数字溯源与防丢系统。管理
 
 - 管理衣服主档、生产批次、颜色尺码、生产日期、执行标准和厂家信息。
 - 批量生成唯一 SN，支持按批次导出 Excel / CSV 清单。
-- 生成传统正方形二维码，二维码内容为公开详情页链接。
+- 支持生成多种类型二维码（H5 链接、微信小程序方形/圆形码、原始 SN 码）。
 - 小程序扫码可从链接、`sn`、`scene` 或编码后的 `scene=sn%3D...` 中提取 SN。
 - 用户可通过微信登录绑定校服，绑定记录会进入审计日志。
 - 绑定用户可报告丢失、取消报失；拾获者登录后可查看完整联系方式。
@@ -108,7 +108,7 @@ client/dist/build/mp-weixin
 
 1. 管理员登录后台，新增衣服主档。
 2. 在衣服详情中创建生产批次，填写款号、颜色、尺码、批次标签和数量。
-3. 系统批量生成 SN 和传统正方形二维码。
+3. 系统批量生成 SN 和二维码（支持多种类型）。
 4. 导出 Excel 或 CSV，交给印刷、贴标或交付流程。
 5. 用户扫码或输入 SN，查看公开吊牌详情。
 6. 用户微信登录后绑定学生姓名、学校、班级和联系方式。
@@ -117,31 +117,50 @@ client/dist/build/mp-weixin
 
 ## 二维码策略
 
-系统支持两种二维码类型：
+系统支持四种二维码类型：
 
-### 1. 传统正方形二维码（默认）
+### 1. H5 链接二维码（默认推荐）
 
 - 二维码接口：`GET /api/qrcode/{sn}?type=url`
 - 二维码内容：`FRONTEND_BASE_URL/#/pages/garment/detail?sn={SN}`
-- 适用于任何扫码工具
-- 微信扫一扫会打开浏览器/H5 页面
+- 兼容性最强，支持所有扫码场景
+- 微信扫一扫打开浏览器/H5 页面
+- 小程序内扫码可识别 SN 参数
 
-### 2. 微信小程序码（可选）
+### 2. 微信小程序方形二维码
+
+- 二维码接口：`GET /api/qrcode/{sn}?type=mini-program-square`
+- 调用微信 `createwxaqrcode` API 生成
+- 参数通过 `path` 传递，支持小程序内扫码识别
+- 底部包含"微信扫一扫"等字样和微信 logo（微信平台固定样式）
+- 需要配置：`WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`
+
+### 3. 微信小程序圆形码
 
 - 二维码接口：`GET /api/qrcode/{sn}?type=mini-program`
 - 调用微信 `getwxacodeunlimit` API 生成
-- Scene 参数传递 SN 值
-- 微信扫一扫直接打开小程序指定页面
+- 参数通过 `scene` 传递，仅支持微信外部扫码启动
+- 小程序内扫码无法识别（微信平台限制）
+- 纯净外观，无底部字样
 - 需要配置：`WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`
+
+### 4. 原始 SN 码
+
+- 二维码接口：`GET /api/qrcode/{sn}?type=sn`
+- 二维码内容：SN 文本
+- 适合内部扫描设备使用
 
 扫码解析支持以下输入：
 
 ```text
-https://example.com/#/pages/garment/detail?sn=CP20260615DEMO01  # 传统二维码链接
-pages/garment/detail?scene=CP20260615DEMO01                       # 小程序码跳转
-scene=sn%3DCP20260615DEMO01                                       # 编码 scene
+https://example.com/#/pages/garment/detail?sn=CP20260615DEMO01  # H5 链接二维码
+pages/garment/detail?sn=CP20260615DEMO01                          # 小程序方形二维码 path
+pages/garment/detail?scene=CP20260615DEMO01                        # 小程序圆形码 scene（仅外部扫码）
+scene=sn%3DCP20260615DEMO01                                       # 编码后的 scene
 CP20260615DEMO01                                                   # 直接 SN
 ```
+
+**注意**：微信小程序圆形码的 `scene` 参数仅支持外部扫码启动小程序时获取，小程序内扫码无法识别。如需小程序内扫码识别，建议使用 H5 链接二维码或微信小程序方形二维码。
 
 ## 项目结构
 
@@ -210,7 +229,7 @@ server/admin/dist
 - `node:sqlite` 存储数据。
 - PBKDF2 保存管理员密码。
 - HMAC token 区分管理员和用户身份。
-- `qrcode` 生成传统正方形二维码。
+- `qrcode` 生成多种类型二维码。
 - SQLite 开启 `foreign_keys` 和 `WAL`。
 
 后端启动时会执行 `ensureAdminBuild()`。如需跳过自动构建：
@@ -342,12 +361,13 @@ node --test server/admin/test/admin-ui.test.js
 | `DELETE` | `/api/garments/{sn}/report-lost` | 取消报失 | 用户本人 / 管理员 |
 | `POST` | `/api/garments/{sn}/contact-reveal` | 披露联系方式并记录曝光 | 用户 |
 | `POST` | `/api/sn/generate` | 生成唯一 SN | 管理员 |
-| `GET` | `/api/qrcode/{sn}?type=sn\|url\|mini-program` | 获取二维码图片 | 否 |
+| `GET` | `/api/qrcode/{sn}?type=sn\|url\|mini-program\|mini-program-square` | 获取二维码图片 | 否 |
 
 二维码类型说明：
 - `type=sn`：原始 SN 码二维码
-- `type=url`：详情页链接二维码（默认）
-- `type=mini-program`：微信小程序码，微信扫码直接进入小程序
+- `type=url`：H5 链接二维码（默认）
+- `type=mini-program`：微信小程序圆形码（仅外部扫码）
+- `type=mini-program-square`：微信小程序方形二维码（支持内扫码）
 
 `/api/admin/export/{type}` 支持：
 
