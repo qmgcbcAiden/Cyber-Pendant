@@ -7,6 +7,7 @@
 - [当前系统状态](current-system-state.md) — 当前功能、架构、数据模型、API、二维码策略和已知限制索引。
 - [交付与运营手册](operations-handbook.md) — 后台操作、二维码交付、小程序调试、数据导出、备份和验收清单。
 - [安全原则](security-principles.md) — 客户端零信任、安全验证、数据脱敏和审计原则。
+- [HTTP 头部编码修复](http-header-encoding-fix.md) — 中文文件名导出时的 Content-Disposition 编码问题及解决方案。
 
 ## 历史设计与计划
 
