@@ -20,7 +20,8 @@ import {
   escapeCsvValue,
   getClientId,
   setCorsHeaders,
-  setSecurityHeaders
+  setSecurityHeaders,
+  validatePasswordStrength
 } from './security.js';
 import {
   cleanupMemoryCache,
@@ -72,6 +73,7 @@ import {
   findGarmentDetailBySn,
   findUserById,
   findUserByOpenid,
+  sanitizeString,
   getAdminStats,
   incrementGarmentQueryCount,
   insertBatch,
@@ -187,7 +189,8 @@ function bearerToken(req) {
   return header.startsWith('Bearer ') ? header.slice(7) : '';
 }
 
-function requireAdmin(req, config) {
+function requireAdmin(req, context) {
+  const config = context.config;
   const token = bearerToken(req);
   const payload = verifyToken(token, config.tokenSecret);
 
@@ -198,7 +201,9 @@ function requireAdmin(req, config) {
   return payload;
 }
 
-function requireUser(req, config) {
+function requireUser(req, context) {
+  const config = context.config;
+  const db = context.db;
   const token = bearerToken(req);
   const payload = verifyToken(token, config.userTokenSecret);
 
@@ -206,14 +211,33 @@ function requireUser(req, config) {
     throw new HttpError(401, '请先登录');
   }
 
+  // 检查用户状态（修复封禁绕过漏洞）
+  const user = findUserById(db, payload.sub);
+  if (!user) {
+    throw new HttpError(401, '用户不存在');
+  }
+  if (user.status === 'banned') {
+    throw new HttpError(403, '该账号已被禁用');
+  }
+
   return payload;
 }
 
-function readActor(req, config) {
+function readActor(req, context) {
+  const config = context.config;
+  const db = context.db;
   const token = bearerToken(req);
   const user = verifyToken(token, config.userTokenSecret);
 
   if (user?.type === 'user') {
+    // 检查用户状态（修复封禁绕过漏洞）
+    const userData = findUserById(db, user.sub);
+    if (!userData) {
+      throw new HttpError(401, '用户不存在');
+    }
+    if (userData.status === 'banned') {
+      throw new HttpError(403, '该账号已被禁用');
+    }
     return { type: 'user', payload: user };
   }
 
@@ -494,8 +518,56 @@ async function handleLogin(req, res, context) {
     token,
     user: {
       id: admin.id,
-      username: admin.username
+      username: admin.username,
+      needsPasswordChange: Boolean(admin.force_password_change)
     }
+  });
+}
+
+async function handleAdminPasswordChange(req, res, context) {
+  const adminPayload = requireAdmin(req, context);
+  const body = await readJson(req);
+
+  const oldPassword = String(body.oldPassword || '');
+  const newPassword = String(body.newPassword || '');
+
+  if (!oldPassword) {
+    throw new HttpError(400, '请输入当前密码');
+  }
+
+  if (!newPassword) {
+    throw new HttpError(400, '请输入新密码');
+  }
+
+  // 验证当前密码
+  const admin = findAdminByUsername(context.db, adminPayload.username);
+  if (!admin || !verifyPassword(oldPassword, admin.password_hash)) {
+    throw new HttpError(401, '当前密码错误');
+  }
+
+  // 验证新密码强度
+  try {
+    validatePasswordStrength(newPassword);
+  } catch (error) {
+    throw new HttpError(400, error.message);
+  }
+
+  // 检查新密码是否与当前密码相同
+  if (oldPassword === newPassword) {
+    throw new HttpError(400, '新密码不能与当前密码相同');
+  }
+
+  // 更新密码
+  const timestamp = new Date().toISOString();
+  context.db
+    .prepare(
+      'UPDATE admins SET password_hash = ?, force_password_change = 0, last_password_change = ? WHERE username = ?'
+    )
+    .get(hashPassword(newPassword), timestamp, adminPayload.username);
+
+  sendJson(req, res, context.config, 200, {
+    success: true,
+    message: '密码修改成功'
   });
 }
 
@@ -576,10 +648,11 @@ function shouldTrackLookup(searchParams) {
 }
 
 function normalizeBindingInput(body) {
-  const studentName = String(body.studentName || body.ownerName || '').trim();
-  const studentSchool = String(body.studentSchool || body.school || '').trim();
-  const studentClass = String(body.studentClass || body.className || '').trim();
-  const contactName = String(body.contactName || '').trim();
+  // 使用 sanitizeString 防止 XSS 攻击
+  const studentName = sanitizeString(body.studentName || body.ownerName || '');
+  const studentSchool = sanitizeString(body.studentSchool || body.school || '');
+  const studentClass = sanitizeString(body.studentClass || body.className || '');
+  const contactName = sanitizeString(body.contactName || '');
   const contactPhone = String(body.contactPhone || body.phone || '')
     .replace(/\D/g, '');
 
@@ -607,7 +680,7 @@ function normalizeBindingInput(body) {
     throw new HttpError(400, '班级不能超过 40 个字符');
   }
 
-  if (contactName.length > 24) {
+  if (contactName && contactName.length > 24) {
     throw new HttpError(400, '联系人不能超过 24 个字符');
   }
 
@@ -619,7 +692,7 @@ function normalizeBindingInput(body) {
     studentName,
     studentSchool,
     studentClass,
-    contactName: contactName || null,
+    contactName,
     contactPhone,
     ownerName: studentName,
     ownerPhoneTail: contactPhone.slice(-4)
@@ -636,7 +709,7 @@ function handlePublicGarment(req, res, context, sn, searchParams) {
 
   let viewerUserId = null;
   try {
-    viewerUserId = requireUser(req, context.config).sub;
+    viewerUserId = requireUser(req, context).sub;
   } catch (error) {
     if (error.status !== 401) {
       throw error;
@@ -669,7 +742,7 @@ function handlePublicGarment(req, res, context, sn, searchParams) {
 }
 
 async function handleBindGarment(req, res, context, sn) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const row = findGarmentDetailBySn(context.db, sn);
 
   if (!row) {
@@ -705,7 +778,7 @@ async function handleBindGarment(req, res, context, sn) {
 }
 
 async function handleUpdateBinding(req, res, context, sn) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const row = findGarmentDetailBySn(context.db, sn);
 
   if (!row) {
@@ -736,7 +809,7 @@ async function handleUpdateBinding(req, res, context, sn) {
 }
 
 function handleUnbindGarment(req, res, context, sn) {
-  const actor = readActor(req, context.config);
+  const actor = readActor(req, context);
   const row = findGarmentDetailBySn(context.db, sn);
 
   if (!row) {
@@ -764,7 +837,7 @@ function handleUnbindGarment(req, res, context, sn) {
 }
 
 function handleUserGarments(req, res, context) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const garments = listUserGarments(context.db, userPayload.sub).map((row) =>
     toGarmentDto(row, {
       viewerUserId: userPayload.sub,
@@ -776,21 +849,21 @@ function handleUserGarments(req, res, context) {
 }
 
 function handleUserBindingLogs(req, res, context) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const logs = listUserBindingLogs(context.db, userPayload.sub).map(toBindingLogDto);
 
   sendJson(req, res, context.config, 200, { logs });
 }
 
 function handleUserLostReports(req, res, context) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const reports = listUserLostReports(context.db, userPayload.sub).map(toLostReportDto);
 
   sendJson(req, res, context.config, 200, { reports });
 }
 
 async function handleCreateLostReport(req, res, context, sn) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
   const row = findGarmentDetailBySn(context.db, sn);
 
   if (!row) {
@@ -815,7 +888,7 @@ async function handleCreateLostReport(req, res, context, sn) {
 }
 
 function handleCloseLostReport(req, res, context, sn) {
-  const actor = readActor(req, context.config);
+  const actor = readActor(req, context);
   const row = findGarmentDetailBySn(context.db, sn);
 
   if (!row) {
@@ -843,7 +916,7 @@ function handleCloseLostReport(req, res, context, sn) {
 }
 
 async function handleContactReveal(req, res, context, sn) {
-  const userPayload = requireUser(req, context.config);
+  const userPayload = requireUser(req, context);
 
   // 检查联系方式查看限流
   const rateLimitResult = contactRevealRateLimit.check(String(userPayload.sub));
@@ -905,13 +978,13 @@ function sendCsv(req, res, context, filename, rows) {
 }
 
 function handleAdminUsers(req, res, context) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const users = listAdminUsers(context.db).map(toUserDto);
   sendJson(req, res, context.config, 200, { users });
 }
 
 function handleAdminUserDetail(req, res, context, userId) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const user = findUserById(context.db, userId);
 
   if (!user) {
@@ -922,7 +995,7 @@ function handleAdminUserDetail(req, res, context, userId) {
 }
 
 function handleAdminUserStatus(req, res, context, userId, status) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const user = setUserStatus(context.db, userId, status);
 
   if (!user) {
@@ -933,12 +1006,12 @@ function handleAdminUserStatus(req, res, context, userId, status) {
 }
 
 function handleAdminStats(req, res, context) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   sendJson(req, res, context.config, 200, getAdminStats(context.db));
 }
 
 function handleAdminExport(req, res, context, type) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const rows = exportRows(context.db, type);
 
   if (!rows) {
@@ -949,7 +1022,7 @@ function handleAdminExport(req, res, context, type) {
 }
 
 async function handleCreateClothing(req, res, context) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const body = await readJson(req);
   const clothing = normalizeClothingInput(body);
   const validationError = validateClothingForCreate(clothing);
@@ -963,7 +1036,7 @@ async function handleCreateClothing(req, res, context) {
 }
 
 async function handleUpdateClothing(req, res, context, clothingId) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findClothingById(context.db, clothingId);
 
   if (!existing) {
@@ -984,7 +1057,7 @@ async function handleUpdateClothing(req, res, context, clothingId) {
 }
 
 function handleDeleteClothing(req, res, context, clothingId, searchParams) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findClothingById(context.db, clothingId);
 
   if (!existing) {
@@ -1006,7 +1079,7 @@ function handleDeleteClothing(req, res, context, clothingId, searchParams) {
 }
 
 async function handleCreateBatch(req, res, context, clothingId) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const clothing = findClothingById(context.db, clothingId);
 
   if (!clothing) {
@@ -1060,7 +1133,7 @@ async function handleCreateBatch(req, res, context, clothingId) {
 }
 
 async function handleUpdateBatch(req, res, context, batchId) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findBatchById(context.db, batchId);
 
   if (!existing) {
@@ -1076,7 +1149,7 @@ async function handleUpdateBatch(req, res, context, batchId) {
 }
 
 function handleDeleteBatch(req, res, context, batchId, searchParams) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findBatchById(context.db, batchId);
 
   if (!existing) {
@@ -1098,7 +1171,7 @@ function handleDeleteBatch(req, res, context, batchId, searchParams) {
 }
 
 async function handleCreateGarment(req, res, context) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const body = await readJson(req);
   const sn = normalizeSn(body.sn) || generateUniqueSn(context.db);
 
@@ -1148,7 +1221,7 @@ async function handleCreateGarment(req, res, context) {
 }
 
 async function handleUpdateGarment(req, res, context, sn) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findGarmentBySn(context.db, sn);
 
   if (!existing) {
@@ -1165,7 +1238,7 @@ async function handleUpdateGarment(req, res, context, sn) {
 }
 
 function handleDeleteGarment(req, res, context, sn, searchParams) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const existing = findGarmentBySn(context.db, sn);
 
   if (!existing) {
@@ -1459,7 +1532,7 @@ function handleProgressSse(req, res, progressId) {
 }
 
 async function handleBatchQrCodes(req, res, context, searchParams) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
 
   const batchId = readPositiveInteger(searchParams.get('batchId'));
   const type = normalizeQrType(searchParams.get('type')) || 'url';
@@ -1678,7 +1751,7 @@ async function handleBatchQrCodes(req, res, context, searchParams) {
  * 处理Excel导出（包含二维码图片）
  */
 async function handleExcelExportWithQrCodes(req, res, context) {
-  requireAdmin(req, context.config);
+  requireAdmin(req, context);
   const body = await readJson(req);
 
   const { garments, qrMode, includeQrImages, batchId, clothing } = body;
@@ -1988,6 +2061,11 @@ async function route(req, res, context) {
     return;
   }
 
+  if (req.method === 'POST' && pathname === '/api/auth/password') {
+    await handleAdminPasswordChange(req, res, context);
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/auth/wechat/login') {
     await handleWechatLogin(req, res, context);
     return;
@@ -2043,7 +2121,7 @@ async function route(req, res, context) {
   }
 
   if (req.method === 'GET' && pathname === '/api/clothes') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const rows = listClothes(context.db, searchParams.get('q') || '');
     sendJson(req, res, context.config, 200, {
       clothes: rows.map(toClothingDto)
@@ -2058,7 +2136,7 @@ async function route(req, res, context) {
 
   const clothingBatchesId = parseClothingBatchesPath(pathname);
   if (clothingBatchesId && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const clothing = findClothingById(context.db, clothingBatchesId);
 
     if (!clothing) {
@@ -2079,7 +2157,7 @@ async function route(req, res, context) {
 
   const clothingId = parsePathId(pathname, '/api/clothes/');
   if (clothingId && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const clothing = findClothingById(context.db, clothingId);
 
     if (!clothing) {
@@ -2114,7 +2192,7 @@ async function route(req, res, context) {
   }
 
   if (req.method === 'GET' && pathname === '/api/garments') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const rows = listGarments(context.db, {
       query: searchParams.get('q') || '',
       clothingId: searchParams.get('clothingId') || '',
@@ -2132,7 +2210,7 @@ async function route(req, res, context) {
   }
 
   if (req.method === 'POST' && pathname === '/api/sn/generate') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     sendJson(req, res, context.config, 200, { sn: generateUniqueSn(context.db) });
     return;
   }
@@ -2188,7 +2266,7 @@ async function route(req, res, context) {
 
   // 二维码缓存管理接口（仅管理员）
   if (pathname === '/api/admin/qrcode/cache/stats' && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const stats = getCacheStats(context.config.qrCacheDir);
     const memoryInfo = getMemoryCacheInfo();
     sendJson(req, res, context.config, 200, {
@@ -2206,14 +2284,14 @@ async function route(req, res, context) {
   }
 
   if (pathname === '/api/admin/qrcode/cache/clear' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     clearAll(context.config.qrCacheDir);
     sendJson(req, res, context.config, 200, { message: '缓存已清空' });
     return;
   }
 
   if (pathname === '/api/admin/qrcode/cache/cleanup' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const cleaned = cleanupMemoryCache();
     sendJson(req, res, context.config, 200, {
       message: '内存缓存已清理',
@@ -2224,7 +2302,7 @@ async function route(req, res, context) {
 
   // 批量检查缓存状态
   if (pathname === '/api/admin/qrcode/cache/check-batch' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const body = await readJson(req);
     const sns = body.sns || [];
     const type = normalizeQrType(body.type) || 'url';
@@ -2244,7 +2322,7 @@ async function route(req, res, context) {
 
   // 修复缓存元数据
   if (pathname === '/api/admin/qrcode/cache/repair' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const result = repairCacheMetadata(context.db, context.config.qrCacheDir);
     sendJson(req, res, context.config, 200, result);
     return;
@@ -2252,7 +2330,7 @@ async function route(req, res, context) {
 
   // 检查缓存健康状态
   if (pathname === '/api/admin/qrcode/cache/health' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const body = await readJson(req);
     const sns = body.sns || [];
     const type = normalizeQrType(body.type) || 'url';
@@ -2268,7 +2346,7 @@ async function route(req, res, context) {
 
   // 删除单个缓存
   if (pathname === '/api/admin/qrcode/cache/delete' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const body = await readJson(req);
     const sn = body.sn || '';
     const type = normalizeQrType(body.type) || 'url';
@@ -2288,7 +2366,7 @@ async function route(req, res, context) {
 
   // 获取缓存列表
   if (pathname === '/api/admin/qrcode/cache/list' && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const limit = readPositiveInteger(searchParams.get('limit')) || 100;
     const offset = readPositiveInteger(searchParams.get('offset')) || 0;
     const type = searchParams.get('type') || null;
@@ -2307,7 +2385,7 @@ async function route(req, res, context) {
 
   // 获取缓存统计
   if (pathname === '/api/admin/qrcode/cache/statistics' && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const stats = getCacheStatistics(context.db);
     sendJson(req, res, context.config, 200, stats);
     return;
@@ -2315,7 +2393,7 @@ async function route(req, res, context) {
 
   // 进度管理接口
   if (pathname === '/api/progress/create' && req.method === 'POST') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const body = await readJson(req);
     const total = readPositiveInteger(body.total) || 0;
     const progressId = createProgress(total);
@@ -2324,7 +2402,7 @@ async function route(req, res, context) {
   }
 
   if (pathname.startsWith('/api/progress/') && req.method === 'GET') {
-    requireAdmin(req, context.config);
+    requireAdmin(req, context);
     const progressId = pathname.slice('/api/progress/'.length);
     if (!progressId) {
       throw new HttpError(400, '缺少进度ID');

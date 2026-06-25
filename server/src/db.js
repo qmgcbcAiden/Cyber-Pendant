@@ -62,6 +62,34 @@ function cleanString(value) {
   return text ? text : null;
 }
 
+/**
+ * 净化字符串，防止 XSS 攻击
+ * 对 HTML 特殊字符进行实体编码
+ *
+ * @param {*} value - 要净化的值
+ * @returns {string|null} - 净化后的值
+ */
+export function sanitizeString(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return null;
+  }
+
+  // HTML 实体编码，防止 XSS 攻击
+  // 编码 OWASP 推荐的关键字符： < > " ' / `
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
 function cleanPositiveInteger(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
@@ -285,6 +313,9 @@ export function migrateDatabase(db, config) {
     CREATE INDEX IF NOT EXISTS idx_garments_lost_report ON garments(lost_report_id);
   `);
 
+  // 确保管理员表有密码安全字段
+  ensureAdminPasswordColumns(db);
+
   seedAdmin(db, config);
   seedDemoData(db);
   backfillThreeLayerData(db);
@@ -349,6 +380,18 @@ function ensureLostReportsColumns(db) {
   }
 }
 
+/**
+ * 确保管理员表有密码安全相关字段
+ */
+function ensureAdminPasswordColumns(db) {
+  if (!columnExists(db, 'admins', 'force_password_change')) {
+    db.exec('ALTER TABLE admins ADD COLUMN force_password_change INTEGER NOT NULL DEFAULT 0;');
+  }
+  if (!columnExists(db, 'admins', 'last_password_change')) {
+    db.exec('ALTER TABLE admins ADD COLUMN last_password_change TEXT;');
+  }
+}
+
 function seedAdmin(db, config) {
   const existing = db
     .prepare('SELECT id FROM admins WHERE username = ?')
@@ -364,9 +407,10 @@ function seedAdmin(db, config) {
     );
   }
 
+  const now = nowIso();
   db.prepare(
-    'INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)'
-  ).run(config.adminUsername, hashPassword(config.adminPassword), nowIso());
+    'INSERT INTO admins (username, password_hash, created_at, force_password_change, last_password_change) VALUES (?, ?, ?, ?, ?)'
+  ).run(config.adminUsername, hashPassword(config.adminPassword), now, 0, now);
 }
 
 function seedDemoData(db) {
@@ -551,9 +595,11 @@ export function normalizeClothingInput(input = {}, options = {}) {
 
   for (const [field, column] of Object.entries(CLOTHING_FIELD_MAP)) {
     if (Object.hasOwn(input, field)) {
-      output[column] = cleanString(input[field]);
+      // 使用 sanitizeString 防止 XSS 攻击
+      output[column] = sanitizeString(input[field]);
     } else if (Object.hasOwn(input, column)) {
-      output[column] = cleanString(input[column]);
+      // 使用 sanitizeString 防止 XSS 攻击
+      output[column] = sanitizeString(input[column]);
     } else if (!options.partial) {
       output[column] = null;
     }
@@ -573,9 +619,11 @@ export function normalizeBatchInput(input = {}, options = {}) {
 
   for (const [field, column] of Object.entries(BATCH_FIELD_MAP)) {
     if (Object.hasOwn(input, field)) {
-      output[column] = cleanString(input[field]);
+      // 使用 sanitizeString 防止 XSS 攻击
+      output[column] = sanitizeString(input[field]);
     } else if (Object.hasOwn(input, column)) {
-      output[column] = cleanString(input[column]);
+      // 使用 sanitizeString 防止 XSS 攻击
+      output[column] = sanitizeString(input[column]);
     } else if (!options.partial) {
       output[column] = null;
     }

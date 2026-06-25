@@ -164,9 +164,18 @@ export function setSecurityHeaders(res, options = {}) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
 
-  // 内容安全策略（基础策略，可根据需要扩展）
-  // 注意：这可能会影响内联脚本和图片加载，需要根据实际情况调整
-  // res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;");
+  // 内容安全策略 - 防止 XSS 攻击
+  // 允许同源资源、内联脚本/样式（Vue 需要）、data: 图片（二维码）
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https:; " +
+    "font-src 'self'; " +
+    "object-src 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self';"
+  );
 }
 
 /**
@@ -311,4 +320,79 @@ export function getClientId(req) {
     return forwardedFor.split(',')[0].trim();
   }
   return req.socket.remoteAddress || 'unknown';
+}
+
+/**
+ * 验证管理员密码强度
+ *
+ * 密码要求：
+ * - 至少 12 位字符
+ * - 包含大小写字母、数字、特殊字符中的至少 3 种
+ * - 不包含常见弱密码模式
+ *
+ * @param {string} password - 待验证的密码
+ * @throws {Error} 如果密码强度不足
+ */
+export function validatePasswordStrength(password) {
+  if (!password) {
+    throw new Error('密码不能为空');
+  }
+
+  if (password.length < 12) {
+    throw new Error('密码长度至少需要 12 位');
+  }
+
+  // 检查字符多样性
+  const hasLower = /[a-z]/.test(password);
+  const hasUpper = /[A-Z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>_+\-=\[\]\\]/.test(password);
+
+  const varietyCount = [hasLower, hasUpper, hasDigit, hasSpecial].filter(Boolean).length;
+  if (varietyCount < 3) {
+    throw new Error(
+      '密码需要包含大小写字母、数字、特殊字符中的至少 3 种。\n' +
+      '当前密码仅包含: ' +
+      [
+        hasLower ? '小写字母' : '',
+        hasUpper ? '大写字母' : '',
+        hasDigit ? '数字' : '',
+        hasSpecial ? '特殊字符' : ''
+      ].filter(Boolean).join('、')
+    );
+  }
+
+  // 检查常见弱密码模式
+  const weakPatterns = [
+    'password',
+    'pass',
+    'admin',
+    '123456',
+    '12345678',
+    'qwerty',
+    'abcdefgh',
+    'abcd1234',
+    'admin123',
+    'password123',
+    'qwer1234'
+  ];
+
+  const lower = password.toLowerCase();
+  for (const pattern of weakPatterns) {
+    if (lower.includes(pattern)) {
+      throw new Error(`密码不能包含常见弱密码模式 "${pattern}"`);
+    }
+  }
+
+  // 检查字符重复度（如果70%以上是同一个字符，认为太弱）
+  const charCounts = {};
+  for (const char of password) {
+    charCounts[char] = (charCounts[char] || 0) + 1;
+  }
+  const maxCount = Math.max(...Object.values(charCounts));
+  if (maxCount / password.length > 0.7) {
+    throw new Error('密码包含过多重复字符，请使用更多样化的字符组合');
+  }
+
+  return true;
 }

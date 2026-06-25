@@ -13,6 +13,7 @@ import { createApp } from '../src/api.js';
 import {
   createRateLimit,
   validateSecretStrength,
+  validatePasswordStrength,
   escapeCsvValue
 } from '../src/security.js';
 
@@ -274,4 +275,51 @@ test('安全响应头 - 存在必需的头', async () => {
   } finally {
     await close();
   }
+});
+
+test('CSP响应头 - 启用内容安全策略', async () => {
+  const { baseUrl, close } = await startTestServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/health`);
+
+    // 检查 CSP 响应头存在
+    const csp = response.headers.get('Content-Security-Policy');
+    assert.ok(csp, 'CSP 响应头应该存在');
+
+    // 检查 CSP 包含必要的策略
+    assert.ok(csp.includes("default-src 'self'"), 'CSP 应该限制默认来源');
+    assert.ok(csp.includes("object-src 'none'"), 'CSP 应该禁止对象');
+    assert.ok(csp.includes("base-uri 'self'"), 'CSP 应该限制 base URI');
+  } finally {
+    await close();
+  }
+});
+
+test('密码强度验证 - 拒绝弱密码', () => {
+  // 测试过短的密码
+  assert.throws(
+    () => validatePasswordStrength('short'),
+    { message: /至少需要 12 位/ }
+  );
+
+  // 测试字符多样性不足
+  assert.throws(
+    () => validatePasswordStrength('abcdefghijkl'),
+    { message: /至少 3 种/ }
+  );
+
+  // 测试常见弱密码（需要至少12位且符合字符多样性要求）
+  assert.throws(
+    () => validatePasswordStrength('Password1234!'),
+    { message: /常见弱密码模式/ }
+  );
+});
+
+test('密码强度验证 - 接受强密码', () => {
+  // 测试符合要求的密码（避免使用包含 "pass" 的密码）
+  assert.doesNotThrow(() => validatePasswordStrength('MyStr0ng!Code'));
+  assert.doesNotThrow(() => validatePasswordStrength('Secure@Key123'));
+  assert.doesNotThrow(() => validatePasswordStrength('Complex#Pwd456'));
+  assert.doesNotThrow(() => validatePasswordStrength('QrT8!kLm@3xW'));
 });
